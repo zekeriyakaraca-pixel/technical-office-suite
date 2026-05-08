@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:status-smoke",
+  "messages": [
+    {
+      "role": "user",
+      "content": "danieli-1701 işindwe ne durumdayız",
+      "timestamp": 1778150745983
+    },
+    {
+      "role": "assistant",
+      "content": "`danieli-1701` durum ozeti:\n- Proje: danieli-1701\n- FSM: completed\n- Job sonucu: ok=false\n- PDF: 1 dosya, toplam 26 sayfa\n- Siniflandirma: visual_text_required\n- Codex adaylari: 3\n- Uretilen poz: 3\n- Manuel inceleme: 3\n- Onayli spec: var\n- Acik mudur notu: 1\nKarar: Bu is tamamlanmis kabul edilmemeli. Gorsel PDF sayfa kapsami uretilen/adaya gore eksik; eksik sayfalar ve acik geometri notlari kapanmadan partlist/teslim kapisi acilmamali.",
+      "timestamp": 1778150745983
+    }
+  ]
+}

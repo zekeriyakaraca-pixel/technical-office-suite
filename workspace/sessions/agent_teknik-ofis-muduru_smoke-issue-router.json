@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:smoke-issue-router",
+  "messages": [
+    {
+      "role": "user",
+      "content": "pdf içerisinde toplam 26 sayfa var ama sistemimiz 3 adet üretti",
+      "timestamp": 1778135074315
+    },
+    {
+      "role": "assistant",
+      "content": "Evet, `danieli-1701` icin gordugun hatalari benimle duzeltebiliriz.\nBu noktada seni sadece ozetle gecmem yanlis olur; tespitlerini teknik karar maddelerine cevirmem gerekiyor.\nIlk tespitin gecerli: PDF toplam 26 sayfa gorunuyor ama sistem su an 3 poz uretmis ve 3 aday kaydi var. Bu is teslim/partlist icin tamamlanmis kabul edilmemeli; eksik sayfa/poz incelemesi acilmali.\nBana hatalari su formatta yaz: sayfa no, poz no varsa poz no, sistemin urettigi deger, olmasi gereken deger.\nBen de her madde icin `aday duzelt`, `yeniden uret`, `manuel inceleme` veya `QC blokla` karariyla ilerletecegim.",
+      "timestamp": 1778135074315
+    }
+  ]
+}

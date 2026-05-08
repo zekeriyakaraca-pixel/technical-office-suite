@@ -1,0 +1,51 @@
+services:
+  runtime:
+    build:
+      context: ./runtime
+      dockerfile: Dockerfile
+    image: technical-office-runtime:latest
+    container_name: toffice-runtime
+    ports:
+      - "7770:7770"
+    environment:
+      - TOFFICE_API_SECRET=${TOFFICE_API_SECRET:-}
+      - AUTOCAD_MCP_BACKEND=ezdxf
+      - AUTOCAD_MCP_IPC_DIR=/tmp/autocad-ipc
+      - PYTHONIOENCODING=utf-8
+    volumes:
+      - ./workspace:/app/workspace
+      - ./agents:/app/agents:ro
+      - ./knowledge:/app/knowledge:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7770/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      autocad-mcp:
+        condition: service_started
+
+  autocad-mcp:
+    build:
+      context: ./mcp/autocad-mcp-server
+      dockerfile: Dockerfile
+    image: technical-office-mcp:latest
+    container_name: toffice-mcp
+    environment:
+      - AUTOCAD_MCP_BACKEND=ezdxf
+      - AUTOCAD_MCP_IPC_DIR=/tmp/autocad-ipc
+      - PYTHONIOENCODING=utf-8
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: toffice-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - runtime
+    restart: unless-stopped

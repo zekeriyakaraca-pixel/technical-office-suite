@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run*)",
+      "Bash(uv sync*)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/toffice.ps1*)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/suite.ps1*)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/smoke.ps1*)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/codex-mcp.ps1*)",
+      "Bash(codex.cmd --version*)",
+      "Bash(codex.cmd exec --help*)",
+      "Bash(codex.cmd mcp list*)",
+      "Bash(codex.cmd mcp get autocad-mcp*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "mcp__autocad-mcp__drawing",
+      "mcp__autocad-mcp__entity",
+      "mcp__autocad-mcp__layer",
+      "mcp__autocad-mcp__block",
+      "mcp__autocad-mcp__annotation",
+      "mcp__autocad-mcp__pid",
+      "mcp__autocad-mcp__view",
+      "mcp__autocad-mcp__system"
+    ]
+  },
+  "hooks": {}
+}

@@ -1,0 +1,67 @@
+{
+  "mcpServers": {
+    "autocad-mcp": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "mcp/autocad-mcp-server",
+        "python",
+        "-m",
+        "autocad_mcp"
+      ],
+      "env": {
+        "AUTOCAD_MCP_BACKEND": "auto",
+        "AUTOCAD_MCP_IPC_DIR": "C:/temp",
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONPATH": "mcp/autocad-mcp-server/src"
+      }
+    }
+  },
+  "notes": {
+    "codex_cli": "Codex CLI does not use this .mcp.json as its source of truth. Run scripts/codex-mcp.ps1 to inspect Codex global MCP config."
+  },
+  "parked": {
+    "github": {
+      "status": "optional",
+      "reason": "Requires token validation and may download npx packages. Do not assume active for Codex CLI.",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "playwright": {
+      "status": "optional",
+      "reason": "Browser automation is not required for default runtime validation.",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "env": {
+        "PLAYWRIGHT_HEADLESS": "true"
+      }
+    },
+    "sequential-thinking": {
+      "status": "optional",
+      "reason": "Planning helper only; not part of runtime execution.",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "context7": {
+      "status": "optional",
+      "reason": "External docs helper only; not part of runtime execution.",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    },
+    "tekla": {
+      "status": "optional",
+      "reason": "Tekla MCP is intentionally parked for the first working suite target.",
+      "folder": "mcp/tekla-mcp-server"
+    },
+    "memory": {
+      "status": "optional",
+      "reason": "Cross-session memory. Activate only if project files are insufficient for long sessions.",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    }
+  }
+}

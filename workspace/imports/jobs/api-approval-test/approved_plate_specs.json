@@ -1,0 +1,32 @@
+{
+  "approved_by": "teknik-ofis-muduru",
+  "approved_at": "2026-05-07T14:23:39.726236+03:00",
+  "plates": [
+    {
+      "poz_no": "APP100",
+      "width": 200.0,
+      "height": 100.0,
+      "thickness": 10.0,
+      "material": "S355",
+      "quantity": 1,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [
+        {
+          "x": 50.0,
+          "y": 25.0,
+          "diameter": 18.0
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "source_page": 1,
+      "confidence": 1.0,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "input.pdf"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:codex-live-python-check",
+  "messages": [
+    {
+      "role": "user",
+      "content": "bu sistemin kapsam?n? iki c?mlede ?zetle",
+      "timestamp": 1778075906920
+    },
+    {
+      "role": "assistant",
+      "content": "Bu sistem, çelik yapı plaka PDF işlerini kabul eder, poz listesini ve iş bilgisini kontrol eder, AutoCAD üretim uzmanı ile bağımsız kalite kontrol akışına yönlendirir. QC `ok=true` olmadan teslim ve partlist açılmaz; düşük kaliteli veya belirsiz PDF’lerde geometri tahmini yapılmaz, iş manuel incelemeye alınır.",
+      "timestamp": 1778075906920
+    }
+  ]
+}

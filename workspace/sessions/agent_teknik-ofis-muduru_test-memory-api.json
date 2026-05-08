@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:test-memory-api",
+  "messages": [
+    {
+      "role": "user",
+      "content": "danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti",
+      "timestamp": 1778153019425
+    },
+    {
+      "role": "assistant",
+      "content": "Karar: Bu is tamamlanmis kabul edilmemeli.",
+      "timestamp": 1778153019425
+    }
+  ]
+}

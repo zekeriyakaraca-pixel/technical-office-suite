@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:restart-smoke",
+  "messages": [
+    {
+      "role": "user",
+      "content": "danieli-1701 işime baştan başlamak istiyorum",
+      "timestamp": 1778150326703
+    },
+    {
+      "role": "assistant",
+      "content": "`danieli-1701` icin bastan baslama Codex gerektirmez; bu yerel job yonetimi akisi.\nPDF girdileri korunacak: deneme.pdf.\nMevcut `approved_plate_specs.json` var; bu dosya temizlenmeden pipeline gercekten bastan baslamaz.\nMevcut cikti/ozet klasoru var; temiz baslangicta bunlari arsivlemek gerekir.\nGuvenli temiz baslangic icin eski ciktilari ve onayli spec dosyasini arsivler, isi `uploaded` durumuna alirim.\nUygulamak icin net komut yaz: `danieli-1701 temiz baslat`.",
+      "timestamp": 1778150326703
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:final-live-check",
+  "messages": [
+    {
+      "role": "user",
+      "content": "merhaba",
+      "timestamp": 1778071485442
+    },
+    {
+      "role": "assistant",
+      "content": "Merhaba, buradayim. Teknik ofis muduru olarak PDF yukleme, pipeline calistirma, aday onayi, QC kontrolu, partlist kapisi ve yeni ajan taslaklarini yonetebilirim. Su an gordugum isler: `api-approval-test`, `api-events-terminal`, `api-file-output`, `api-partlist-blocked`, `api-upload-test`, `chat-001`. Dogrudan bir is icin `test-001 isini calistir`, karar icin de `bu isin durumunu ozetle` gibi yazabilirsin.",
+      "timestamp": 1778071485442
+    }
+  ]
+}

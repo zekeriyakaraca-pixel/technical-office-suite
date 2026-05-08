@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:test-dashboard-chat",
+  "messages": [
+    {
+      "role": "user",
+      "content": "merhaba mudurum",
+      "timestamp": 1778153019377
+    },
+    {
+      "role": "assistant",
+      "content": "Dogal cevap: merhaba mudurum",
+      "timestamp": 1778153019377
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:codex-live-after-direct-cmd",
+  "messages": [
+    {
+      "role": "user",
+      "content": "bu sistemin kapsamını iki cümlede özetle",
+      "timestamp": 1778075733515
+    },
+    {
+      "role": "assistant",
+      "content": "Bu sistem, çelik yapı teknik ofisinde PDF kaynaklı plaka işlerini kabul edip poz bilgilerini kontrol eden, işi AutoCAD üretim ve bağımsız QC akışına yönlendiren bir müdür ajanıdır. QC `ok=true` olmadan partlist veya teslim kapısı açılmaz; düşük güvenli PDF, belirsiz geometri veya başarısız kontrol durumunda iş manuel inceleme ya da yeniden üretim akışına alınır.",
+      "timestamp": 1778075733515
+    }
+  ]
+}

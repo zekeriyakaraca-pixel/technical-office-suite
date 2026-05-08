@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:codex-live-after-mojibake-fix",
+  "messages": [
+    {
+      "role": "user",
+      "content": "bu sistemin kapsamını iki cümlede özetle",
+      "timestamp": 1778075841955
+    },
+    {
+      "role": "assistant",
+      "content": "Bu sistem, PDF kaynaklı çelik plaka işlerini kabul edip poz bazında AutoCAD/DXF/NC üretim hattına yönlendiren ve süreci teknik ofis müdürü bakışıyla takip eden bir iş yönetim hattıdır. QC `ok=true` olmadan partlist veya teslim kapısı açılmaz; düşük güvenli PDF, belirsiz geometri veya başarısız QC durumunda iş manuel inceleme ya da yeniden üretime döner.",
+      "timestamp": 1778075841955
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:smoke",
+  "messages": [
+    {
+      "role": "user",
+      "content": "seninle ne is yapabiliriz",
+      "timestamp": 1778140474882
+    },
+    {
+      "role": "assistant",
+      "content": "Merhaba, buradayim. Teknik ofis muduru olarak PDF yukleme, pipeline calistirma, aday onayi, QC kontrolu, partlist kapisi, is hata notlari, yeni ajan taslaklari ve acik proje/kod duzeltme isteklerini yonetebilirim. Kod/dosya degisikligi acikca istendiginde Codex CLI'yi proje yazma modunda calistiririm. Su an gordugum isler: `api-approval-source-pdf-repair`, `api-approval-test`, `api-events-terminal`, `api-file-output`, `api-inline-pdf-preview`, `api-partlist-blocked`. Dogrudan bir is icin `test-001 isini calistir`, karar icin de `bu isin durumunu ozetle` gibi yazabilirsin.",
+      "timestamp": 1778140474882
+    }
+  ]
+}

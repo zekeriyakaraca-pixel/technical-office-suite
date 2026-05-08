@@ -1,0 +1,825 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Technical Office Runtime</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      font-feature-settings: "cv01", "ss03";
+      color: #e7edf4;
+      background: #080b10;
+      --bg: #080b10;
+      --bg-2: #0d1118;
+      --panel: rgba(18, 24, 34, 0.86);
+      --panel-strong: rgba(25, 33, 45, 0.94);
+      --panel-soft: rgba(255, 255, 255, 0.035);
+      --line: rgba(201, 216, 235, 0.12);
+      --line-strong: rgba(201, 216, 235, 0.19);
+      --text: #e7edf4;
+      --muted: #93a4b8;
+      --subtle: #647386;
+      --accent: #76e4c2;
+      --accent-2: #8b8dff;
+      --warning: #f4bf65;
+      --danger: #ff7777;
+      --success: #6ee7a8;
+      --shadow: 0 18px 60px rgba(0, 0, 0, 0.36);
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(15, 23, 32, 0.88), rgba(8, 11, 16, 0.98) 320px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 84px),
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.018) 0 1px, transparent 1px 84px),
+        var(--bg);
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(90deg, transparent, rgba(118, 228, 194, 0.10), rgba(139, 141, 255, 0.10), transparent);
+      height: 2px;
+      animation: scanline 7s linear infinite;
+      opacity: 0.75;
+      z-index: 10;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: rgba(9, 13, 19, 0.88);
+      border-bottom: 1px solid var(--line);
+      color: var(--text);
+      padding: 18px 24px 14px;
+      backdrop-filter: blur(18px);
+    }
+    main {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 16px;
+      padding: 16px;
+      align-items: start;
+    }
+    section {
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.015) inset, var(--shadow);
+      animation: panelIn 360ms ease both;
+    }
+    section::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border-radius: inherit;
+      background: linear-gradient(180deg, rgba(255,255,255,0.055), transparent 80px);
+      opacity: 0.55;
+    }
+    section > * { position: relative; z-index: 1; }
+    h1 { margin: 0; font-size: 22px; line-height: 1.1; letter-spacing: 0; font-weight: 650; }
+    h2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+      font-size: 14px;
+      letter-spacing: 0;
+      color: #f7fbff;
+      font-weight: 650;
+    }
+    h2::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 99px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 16px rgba(118, 228, 194, 0.65);
+    }
+    h3 { margin: 14px 0 8px; font-size: 13px; letter-spacing: 0; color: #c3cedb; }
+    label { display: block; font-size: 12px; margin: 10px 0 5px; color: var(--muted); }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0 12px; }
+    input, textarea, button, select { font: inherit; }
+    input[type="text"], input[type="file"], input[type="number"], textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 9px 10px;
+      background: rgba(255,255,255,0.045);
+      color: var(--text);
+      outline: none;
+      transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+    }
+    input[type="file"] { color: var(--muted); }
+    input[type="file"]::file-selector-button {
+      margin-right: 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      padding: 6px 9px;
+      color: #0a1117;
+      background: linear-gradient(135deg, var(--accent), #b5f7e4);
+      cursor: pointer;
+    }
+    input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
+      border-color: rgba(118, 228, 194, 0.7);
+      background: rgba(255,255,255,0.065);
+      box-shadow: 0 0 0 3px rgba(118, 228, 194, 0.12);
+    }
+    input::placeholder, textarea::placeholder { color: #748397; }
+    input[type="number"] { min-width: 78px; }
+    textarea { min-height: 82px; resize: vertical; }
+    button {
+      border: 1px solid rgba(118, 228, 194, 0.28);
+      border-radius: 7px;
+      padding: 9px 12px;
+      background: linear-gradient(135deg, rgba(118, 228, 194, 0.95), rgba(139, 141, 255, 0.88));
+      color: #081017;
+      cursor: pointer;
+      font-weight: 650;
+      transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.25), 0 0 18px rgba(118, 228, 194, 0.14);
+    }
+    button:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); }
+    button:active:not(:disabled) { transform: translateY(0); }
+    button.secondary {
+      background: rgba(255,255,255,0.055);
+      color: var(--text);
+      border-color: var(--line-strong);
+      box-shadow: none;
+    }
+    button.success {
+      background: linear-gradient(135deg, rgba(110, 231, 168, 0.94), rgba(118, 228, 194, 0.86));
+      color: #07120d;
+    }
+    button:disabled {
+      background: rgba(255,255,255,0.06);
+      color: #697789;
+      border-color: rgba(255,255,255,0.08);
+      box-shadow: none;
+      cursor: default;
+      transform: none;
+    }
+    iframe {
+      width: 100%;
+      min-height: 420px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #f6f8fb;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 8px 7px; text-align: left; vertical-align: middle; color: #d5dee9; }
+    th { color: #98a8ba; background: rgba(255,255,255,0.035); font-weight: 650; }
+    tr:hover td { background: rgba(255,255,255,0.025); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a.pdf-download {
+      display: inline-flex;
+      align-items: center;
+      min-height: 40px;
+      padding: 9px 12px;
+      border: 1px solid rgba(118, 228, 194, 0.28);
+      border-radius: 7px;
+      background: linear-gradient(135deg, rgba(118, 228, 194, 0.95), rgba(139, 141, 255, 0.88));
+      color: #081017;
+      font-weight: 650;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.25), 0 0 18px rgba(118, 228, 194, 0.14);
+    }
+    a.pdf-download:hover { text-decoration: none; filter: brightness(1.06); }
+    pre {
+      background: #080d17;
+      color: #cfe2f3;
+      padding: 12px;
+      border: 1px solid rgba(118, 228, 194, 0.13);
+      border-radius: 7px;
+      overflow: auto;
+      max-height: 260px;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.28);
+      scrollbar-color: #334052 #101722;
+    }
+    #events { min-height: 54px; }
+    #events:not(:empty) { animation: softPulse 2.6s ease-in-out infinite; }
+    .job {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.035);
+      transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+    }
+    .job:hover { transform: translateX(2px); background: rgba(255,255,255,0.065); border-color: var(--line-strong); }
+    .job.active {
+      border-color: rgba(118, 228, 194, 0.55);
+      background: linear-gradient(90deg, rgba(118, 228, 194, 0.13), rgba(139, 141, 255, 0.08));
+      box-shadow: 0 0 0 1px rgba(118, 228, 194, 0.10) inset;
+    }
+    .job strong { overflow-wrap: anywhere; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #d4deeb;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .pill::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 99px;
+      background: currentColor;
+      opacity: 0.85;
+    }
+    .pill.ok { background: rgba(110, 231, 168, 0.13); color: var(--success); border-color: rgba(110, 231, 168, 0.26); }
+    .pill.warn { background: rgba(244, 191, 101, 0.14); color: var(--warning); border-color: rgba(244, 191, 101, 0.25); }
+    .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 0.85fr); gap: 14px; align-items: start; }
+    .stack { display: grid; gap: 14px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .action-message {
+      margin-top: 10px;
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .action-message.error { color: var(--danger); }
+    .action-message.ok { color: var(--success); }
+    .brand-row { display: flex; align-items: center; gap: 12px; }
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, rgba(118, 228, 194, 0.18), rgba(139, 141, 255, 0.14));
+      border: 1px solid var(--line-strong);
+      box-shadow: inset 0 0 22px rgba(118, 228, 194, 0.10);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 14px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .header-subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .status-bar {
+      position: sticky;
+      top: 73px;
+      z-index: 4;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 10px 24px;
+      background: rgba(11, 16, 24, 0.82);
+      border-bottom: 1px solid var(--line);
+      color: #b6c4d4;
+      font-size: 12px;
+      backdrop-filter: blur(14px);
+    }
+    .status-bar > span {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 4px 9px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+    }
+    .status-bar > span:first-child::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      margin-right: 7px;
+      border-radius: 99px;
+      background: var(--success);
+      box-shadow: 0 0 0 0 rgba(110, 231, 168, 0.55);
+      animation: statusPulse 1.9s ease infinite;
+    }
+    .status-bar strong { color: #eef6ff; margin-left: 4px; font-weight: 650; }
+    .chat-log {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 12px;
+      min-height: 150px;
+      max-height: 260px;
+      overflow: auto;
+      background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+      scrollbar-color: #334052 #101722;
+    }
+    .chat-log > div {
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.055);
+      line-height: 1.45;
+    }
+    .chat-log > div:last-child { border-bottom: 0; }
+    .chat-log strong { color: #f7fbff; }
+    .chat-log .thinking { color: var(--accent); font-style: italic; animation: thinking 1.4s ease-in-out infinite; }
+    .scroll { overflow: auto; }
+    .compact { max-width: 104px; }
+    /* FSM state badge colors */
+    .fsm-uploaded      { color: #c5d0de; }
+    .fsm-classifying   { color: #7cc7ff; }
+    .fsm-classified    { color: #8ddcf6; }
+    .fsm-extracting    { color: var(--warning); }
+    .fsm-awaiting_approval { color: #ffd083; }
+    .fsm-producing     { color: #b8a7ff; animation: softPulse 2s ease-in-out infinite; }
+    .fsm-qc_checking   { color: #8ee8be; }
+    .fsm-completed     { color: var(--success); }
+    .fsm-failed        { color: var(--danger); }
+    .fsm-retrying      { color: #ffab75; animation: softPulse 2s ease-in-out infinite; }
+    /* Consensus warning */
+    .conflict-banner {
+      background: rgba(244, 191, 101, 0.14);
+      border: 1px solid rgba(244, 191, 101, 0.30);
+      color: #ffe1a6;
+      border-radius: 7px;
+      padding: 9px 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+    .stat-chip { font-size: 12px; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid var(--line); }
+    @keyframes scanline {
+      0% { transform: translateX(-100%); opacity: 0; }
+      8% { opacity: 0.65; }
+      52% { opacity: 0.65; }
+      100% { transform: translateX(100%); opacity: 0; }
+    }
+    @keyframes panelIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes statusPulse {
+      0% { box-shadow: 0 0 0 0 rgba(110, 231, 168, 0.45); }
+      70% { box-shadow: 0 0 0 8px rgba(110, 231, 168, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(110, 231, 168, 0); }
+    }
+    @keyframes softPulse {
+      0%, 100% { filter: brightness(1); }
+      50% { filter: brightness(1.18); }
+    }
+    @keyframes thinking {
+      0%, 100% { opacity: 0.55; }
+      50% { opacity: 1; }
+    }
+    @media (max-width: 1000px) {
+      main, .grid { grid-template-columns: 1fr; }
+      iframe { min-height: 320px; }
+      .status-bar { top: 72px; }
+    }
+    @media (max-width: 640px) {
+      header { padding: 14px 16px 12px; }
+      main { padding: 12px; }
+      .status-bar { position: static; padding: 10px 12px; }
+      .actions button { flex: 1 1 150px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand-row">
+      <div class="brand-mark">TO</div>
+      <div>
+        <h1>Technical Office 2D Runtime</h1>
+        <div class="header-subtitle">Codex CLI bridge + deterministic DXF/NC1/QC pipeline</div>
+      </div>
+    </div>
+  </header>
+  <div class="status-bar" id="systemBar">
+    <span><span id="sysStatus">yükleniyor...</span></span>
+    <span>Aktif iş: <strong id="sysActiveJobs">-</strong></span>
+    <span>Toplam: <strong id="sysTotalJobs">-</strong></span>
+    <span>Bellek kalıpları: <strong id="sysPatterns">-</strong></span>
+    <span>Ort. güven: <strong id="sysAvgConf">-</strong></span>
+    <span>Uptime: <strong id="sysUptime">-</strong></span>
+  </div>
+  <main>
+    <section>
+      <h2>Yeni Is</h2>
+      <form id="uploadForm">
+        <label>Proje adi</label>
+        <input name="project_name" type="text" required placeholder="danieli-1701">
+        <label>Job ID</label>
+        <input name="job_id" type="text" placeholder="Bos birakilirsa otomatik">
+        <label>PDF dosyalari</label>
+        <input name="pdf_files" type="file" accept="application/pdf" multiple required>
+        <div class="actions">
+          <button>Yukle</button>
+          <button class="secondary" type="button" id="refreshJobs">Yenile</button>
+        </div>
+      </form>
+      <hr>
+      <h2>Isler</h2>
+      <div id="jobs"></div>
+    </section>
+
+    <section class="stack">
+      <div>
+        <h2>Is Detayi</h2>
+        <div id="jobDetail" class="muted">Bir is sec.</div>
+        <div class="actions">
+          <button id="runJob" disabled>Pipeline Calistir</button>
+          <button id="approveSelected" disabled>Secili Adaylari Onayla</button>
+          <button id="createPartlist" class="success" disabled>Partlist Uret</button>
+        </div>
+        <div id="actionMessage" class="action-message"></div>
+      </div>
+
+      <div class="grid">
+        <div class="stack">
+          <section>
+            <h2>PDF Onizleme</h2>
+            <div id="pdfLinks" class="actions"></div>
+            <iframe id="pdfPreview" title="PDF preview"></iframe>
+          </section>
+          <section>
+            <h2>Adaylar</h2>
+            <div id="candidates" class="muted">Aday yok.</div>
+          </section>
+          <section>
+            <h2>Ciktilar ve QC</h2>
+            <div id="outputs" class="muted">Cikti yok.</div>
+          </section>
+        </div>
+
+        <div class="stack">
+          <section>
+            <h2>Diagnostics</h2>
+            <pre id="diagnostics">{}</pre>
+          </section>
+          <section>
+            <h2>Canli Event Stream</h2>
+            <pre id="events"></pre>
+          </section>
+          <section>
+            <h2>Mudur Chat</h2>
+            <div id="chatLog" class="chat-log"></div>
+            <label>Mesaj</label>
+            <textarea id="chatInput" placeholder="Bu isin durumunu ozetle"></textarea>
+            <div class="actions"><button id="sendChat">Gonder</button></div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let selectedJob = null;
+    let selectedDetail = null;
+    let eventSource = null;
+    let managerHistory = [];
+    const managerSessionId = 'agent:teknik-ofis-muduru:dashboard';
+    const CHAT_TIMEOUT_MS = 210000;
+
+    const FSM_LABELS = {
+      uploaded: 'Yüklendi', classifying: 'Sınıflandırılıyor', classified: 'Sınıflandırıldı',
+      extracting: 'Çıkarılıyor', awaiting_approval: 'Onay Bekliyor', producing: 'Üretiliyor',
+      qc_checking: 'QC Kontrol', completed: 'Tamamlandı', failed: 'Hata', retrying: 'Yeniden Deneniyor'
+    };
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, options);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || data.error || res.statusText);
+      return data;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[ch]);
+    }
+
+    async function loadJobs() {
+      const data = await api('/api/jobs');
+      const jobs = document.getElementById('jobs');
+      jobs.innerHTML = '';
+      data.jobs.forEach(job => {
+        const item = document.createElement('div');
+        item.className = 'job' + (job.job_id === selectedJob ? ' active' : '');
+        const fsm = job.fsm_state || job.status || 'uploaded';
+        const fsmLabel = FSM_LABELS[fsm] || fsm;
+        item.innerHTML = `<strong>${escapeHtml(job.job_id)}</strong>` +
+          `<span class="pill fsm-${escapeHtml(fsm)}" title="FSM: ${escapeHtml(fsm)}">${escapeHtml(fsmLabel)}</span>`;
+        item.onclick = () => selectJob(job.job_id);
+        jobs.appendChild(item);
+      });
+    }
+
+    async function loadSystemStatus() {
+      try {
+        const [health, mem] = await Promise.all([
+          api('/api/health').catch(() => null),
+          api('/api/memory/stats').catch(() => null)
+        ]);
+        if (health) {
+          document.getElementById('sysStatus').textContent = health.status === 'ready' ? 'Hazır ✓' : health.status;
+          document.getElementById('sysActiveJobs').textContent = health.jobs_active ?? '-';
+          document.getElementById('sysTotalJobs').textContent = health.jobs_total ?? '-';
+        }
+        if (mem?.stats) {
+          document.getElementById('sysPatterns').textContent = mem.stats.total_patterns ?? '-';
+          document.getElementById('sysAvgConf').textContent = mem.stats.avg_confidence != null ? (mem.stats.avg_confidence * 100).toFixed(0) + '%' : '-';
+        }
+        const metricsData = await api('/api/metrics').catch(() => null);
+        if (metricsData?.metrics) {
+          const u = metricsData.metrics.uptime_seconds;
+          document.getElementById('sysUptime').textContent = u ? (u < 3600 ? Math.round(u/60) + 'dk' : (u/3600).toFixed(1) + 'sa') : '-';
+        }
+      } catch (_) {}
+    }
+
+    async function selectJob(jobId) {
+      selectedJob = jobId;
+      const data = await api(`/api/jobs/${encodeURIComponent(jobId)}`);
+      selectedDetail = data.job;
+      const fsm = data.job.fsm_state || data.job.status || 'uploaded';
+      const fsmLabel = FSM_LABELS[fsm] || fsm;
+      document.getElementById('jobDetail').innerHTML =
+        `<strong>${escapeHtml(data.job.job_id)}</strong> ` +
+        `<span class="pill fsm-${escapeHtml(fsm)}">${escapeHtml(fsmLabel)}</span>` +
+        `<br>${escapeHtml(data.job.project_name || '')}` +
+        `<br><span class="muted">PDF: ${data.job.pdf_count || 0} | Üretilen: ${data.job.produced_count || 0} | Manuel inceleme: ${data.job.manual_review_count || 0}</span>`;
+      document.getElementById('diagnostics').textContent = JSON.stringify(data.job.diagnostics || data.job.summary || {}, null, 2);
+      document.getElementById('runJob').disabled = false;
+      document.getElementById('createPartlist').disabled = false;
+      setActionMessage('');
+      renderPdfs(data.job);
+      renderCandidates(data.job);
+      renderOutputs(data.job);
+      startEvents(jobId, data.job.events || []);
+      await loadJobs();
+    }
+
+    function renderPdfs(job) {
+      const links = document.getElementById('pdfLinks');
+      const preview = document.getElementById('pdfPreview');
+      links.innerHTML = '';
+      const pdfs = job.pdfs || [];
+      if (!pdfs.length) {
+        preview.removeAttribute('src');
+        links.textContent = 'PDF yok.';
+        return;
+      }
+      pdfs.forEach((pdf, index) => {
+        const link = document.createElement('a');
+        link.className = 'pdf-download' + (index ? ' secondary' : '');
+        link.href = pdf.download_url;
+        link.download = pdf.name;
+        link.textContent = pdf.name;
+        links.appendChild(link);
+      });
+      preview.src = pdfs[0].preview_url || pdfs[0].download_url;
+    }
+
+    function renderCandidates(job) {
+      const root = document.getElementById('candidates');
+      const codexList = job?.codex_candidates?.candidates || [];
+      const detList = job?.extraction_candidates?.candidates || [];
+      document.getElementById('approveSelected').disabled = !(selectedJob && codexList.length);
+
+      // Consensus warning
+      let consensusHtml = '';
+      if (codexList.length && detList.length) {
+        const avgConf = arr => arr.reduce((s, c) => s + (c.confidence || 0), 0) / arr.length;
+        const gap = Math.abs(avgConf(codexList) - avgConf(detList));
+        if (gap > 0.3) {
+          consensusHtml = `<div class="conflict-banner">⚠ İki kaynak arasında güven farkı yüksek (${(gap*100).toFixed(0)}%). ` +
+            `Deterministik: ${detList.length} aday | Codex: ${codexList.length} aday. ` +
+            `Onay öncesinde karşılaştırın.</div>`;
+        }
+      }
+
+      if (!codexList.length) {
+        root.innerHTML = consensusHtml || '';
+        if (!consensusHtml) root.textContent = 'Aday yok.';
+        return;
+      }
+      root.innerHTML = consensusHtml + `<div class="scroll"><table><thead><tr>
+        <th>Sec</th><th>ID</th><th>PDF</th><th>Poz</th><th>W</th><th>H</th><th>T</th><th>Malzeme</th><th>Adet</th><th>Güven</th>
+      </tr></thead><tbody>${codexList.map((c, i) => {
+        const confVal = Number(c.confidence || 0);
+        const confColor = confVal >= 0.7 ? '#065f46' : confVal >= 0.4 ? '#92400e' : '#991b1b';
+        return `<tr data-index="${i}">
+        <td><input type="checkbox" class="candidate-check" checked></td>
+        <td>${escapeHtml(c.candidate_id)}</td>
+        <td>${escapeHtml(c.source_pdf || '')} p.${escapeHtml(c.source_page || '')}</td>
+        <td><input class="candidate-field compact" data-key="poz_no" value="${escapeHtml(c.poz_no || '')}"></td>
+        <td><input class="candidate-field compact" data-key="width" type="number" value="${escapeHtml(c.width || '')}"></td>
+        <td><input class="candidate-field compact" data-key="height" type="number" value="${escapeHtml(c.height || '')}"></td>
+        <td><input class="candidate-field compact" data-key="thickness" type="number" value="${escapeHtml(c.thickness || '')}"></td>
+        <td><input class="candidate-field compact" data-key="material" value="${escapeHtml(c.material || 'UNKNOWN')}"></td>
+        <td><input class="candidate-field compact" data-key="quantity" type="number" value="${escapeHtml(c.quantity || 1)}"></td>
+        <td style="color:${confColor};font-weight:600">${(confVal*100).toFixed(0)}%</td>
+      </tr>`;
+      }).join('')}</tbody></table></div>`;
+    }
+
+    function editedCandidates() {
+      const rows = Array.from(document.querySelectorAll('#candidates tbody tr'));
+      const source = selectedDetail?.codex_candidates?.candidates || [];
+      return rows.filter(row => row.querySelector('.candidate-check')?.checked).map(row => {
+        const item = { ...source[Number(row.dataset.index)] };
+        row.querySelectorAll('.candidate-field').forEach(input => {
+          const key = input.dataset.key;
+          const numeric = ['width', 'height', 'thickness', 'quantity'].includes(key);
+          item[key] = numeric ? Number(input.value) : input.value.trim();
+        });
+        return item;
+      });
+    }
+
+    function renderOutputs(job) {
+      const root = document.getElementById('outputs');
+      const files = (job.files || []).filter(file => file.group === 'output');
+      if (!files.length && !job.partlist) {
+        root.textContent = 'Cikti yok.';
+        return;
+      }
+      const rows = files.map(file => `<tr><td>${escapeHtml(file.path)}</td><td>${escapeHtml(file.size_bytes)}</td><td><a href="${file.download_url}">indir</a></td></tr>`).join('');
+      const partlist = job.partlist ? `<p><span class="pill ${job.partlist.ok ? 'ok' : 'warn'}">partlist ${job.partlist.ok ? 'ok' : 'beklemede'}</span></p>` : '';
+      root.innerHTML = `${partlist}<div class="scroll"><table><thead><tr><th>Dosya</th><th>Byte</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+
+    function startEvents(jobId, initialEvents) {
+      if (eventSource) eventSource.close();
+      const events = document.getElementById('events');
+      const seenEvents = new Set((initialEvents || []).map(eventKey));
+      events.textContent = (initialEvents || []).map(formatEvent).join('\n');
+      eventSource = new EventSource(`/api/events/${encodeURIComponent(jobId)}`);
+      eventSource.onmessage = event => {
+        const parsed = JSON.parse(event.data);
+        if (parsed.type === 'heartbeat') return;
+        const isReplayTerminal = parsed?.payload?.replay === true;
+        const key = eventKey(parsed);
+        if (seenEvents.has(key) || isReplayTerminal) {
+          if (parsed.type === 'completed' || parsed.type === 'failed' || isReplayTerminal) {
+            eventSource.close();
+            loadJobs().catch(() => {});
+          }
+          return;
+        }
+        seenEvents.add(key);
+        events.textContent += (events.textContent ? '\n' : '') + formatEvent(parsed);
+        events.scrollTop = events.scrollHeight;
+        if (parsed.type === 'completed' || parsed.type === 'failed') {
+          eventSource.close();
+          loadJobs().catch(() => {});
+        }
+      };
+      eventSource.onerror = () => eventSource.close();
+    }
+
+    function formatEvent(event) {
+      return `${new Date(event.timestamp || Date.now()).toLocaleTimeString()} ${event.type} ${JSON.stringify(event.payload || {})}`;
+    }
+
+    function eventKey(event) {
+      return `${event.timestamp || ''}|${event.type || ''}|${JSON.stringify(event.payload || {})}`;
+    }
+
+    function setActionMessage(message, kind = '') {
+      const root = document.getElementById('actionMessage');
+      root.className = `action-message ${kind}`.trim();
+      root.textContent = message || '';
+    }
+
+    function resultError(data) {
+      if (Array.isArray(data?.validation_errors) && data.validation_errors.length) {
+        return data.validation_errors.map(item => `Satir ${item.row || '?'}: ${item.error || 'gecersiz aday'}`).join(' | ');
+      }
+      return data?.error || data?.detail || 'Islem tamamlanamadi.';
+    }
+
+    document.getElementById('uploadForm').onsubmit = async event => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const data = await api('/api/jobs', { method: 'POST', body: form });
+      await loadJobs();
+      await selectJob(data.job.job_id);
+    };
+
+    document.getElementById('refreshJobs').onclick = loadJobs;
+    document.getElementById('runJob').onclick = async () => {
+      if (!selectedJob) return;
+      setActionMessage('Pipeline calisiyor...');
+      try {
+        startEvents(selectedJob, selectedDetail?.events || []);
+        const data = await api(`/api/jobs/${encodeURIComponent(selectedJob)}/run`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autocad_live_policy: 'off' })
+        });
+        if (data.ok === false) throw new Error(resultError(data));
+        await selectJob(selectedJob);
+        setActionMessage('Pipeline tamamlandi.', 'ok');
+      } catch (err) {
+        setActionMessage(err.message || 'Pipeline calistirilamadi.', 'error');
+      }
+    };
+    document.getElementById('approveSelected').onclick = async () => {
+      const plates = editedCandidates();
+      if (!selectedJob || !plates.length) return;
+      const button = document.getElementById('approveSelected');
+      button.disabled = true;
+      setActionMessage('Adaylar onaylaniyor...');
+      try {
+        const data = await api(`/api/jobs/${encodeURIComponent(selectedJob)}/approve-candidates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plates })
+        });
+        if (data.ok === false) throw new Error(resultError(data));
+        await selectJob(selectedJob);
+        setActionMessage('Adaylar onaylandi ve uretim tamamlandi.', 'ok');
+      } catch (err) {
+        setActionMessage(err.message || 'Aday onayi tamamlanamadi.', 'error');
+        button.disabled = false;
+      }
+    };
+    document.getElementById('createPartlist').onclick = async () => {
+      if (!selectedJob) return;
+      setActionMessage('Partlist uretiliyor...');
+      try {
+        const data = await api(`/api/jobs/${encodeURIComponent(selectedJob)}/partlist`, { method: 'POST' });
+        if (data.ok === false) throw new Error(resultError(data.partlist || data));
+        await selectJob(selectedJob);
+        setActionMessage('Partlist hazir.', 'ok');
+      } catch (err) {
+        setActionMessage(err.message || 'Partlist uretilemedi.', 'error');
+      }
+    };
+    document.getElementById('sendChat').onclick = async () => {
+      const input = document.getElementById('chatInput');
+      const button = document.getElementById('sendChat');
+      const message = input.value.trim();
+      if (!message) return;
+      const log = document.getElementById('chatLog');
+      log.innerHTML += `<div><strong>Sen:</strong> ${escapeHtml(message)}</div>`;
+      const thinking = document.createElement('div');
+      thinking.className = 'thinking';
+      thinking.textContent = 'Mudur dusunuyor...';
+      log.appendChild(thinking);
+      log.scrollTop = log.scrollHeight;
+      managerHistory.push({ role: 'user', content: message });
+      input.value = '';
+      button.disabled = true;
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+      try {
+        const data = await api('/api/manager/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            message,
+            history: managerHistory.slice(-16),
+            session_id: managerSessionId,
+            selected_job_id: selectedJob
+          })
+        });
+        thinking.remove();
+        managerHistory.push({ role: 'assistant', content: data.message });
+        log.innerHTML += `<div><strong>Mudur:</strong> ${escapeHtml(data.message).replaceAll('\n', '<br>')}</div>`;
+      } catch (err) {
+        thinking.remove();
+        const errorMessage = err.name === 'AbortError'
+          ? 'Mudur cevabi gecikti. Codex CLI hala calisiyor olabilir; sayfayi kilitlemeden devam edebilirsin.'
+          : (err.message || 'Cevap alinamadi.');
+        log.innerHTML += `<div><strong>Mudur:</strong> ${escapeHtml(errorMessage)}</div>`;
+      } finally {
+        window.clearTimeout(timeoutId);
+        button.disabled = false;
+        log.scrollTop = log.scrollHeight;
+      }
+    };
+
+    loadJobs().catch(err => { document.getElementById('jobs').textContent = err.message; });
+    loadSystemStatus();
+    setInterval(loadSystemStatus, 30000); // Refresh system status every 30s
+  </script>
+</body>
+</html>

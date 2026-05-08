@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "dev", "feature/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test-runtime:
+    name: Runtime Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: runtime
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.6"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run runtime tests
+        run: uv run pytest tests/ -q --tb=short
+
+  test-mcp:
+    name: MCP Pipeline Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp/autocad-mcp-server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.6"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run headless MCP tests (no AutoCAD required)
+        run: |
+          uv run pytest tests/test_ezdxf_backend.py tests/test_ipc_protocol.py -q --tb=short
+
+      - name: Lint with ruff
+        run: uv run ruff check src/
+
+  docker-build:
+    name: Docker Build Validation
+    runs-on: ubuntu-latest
+    needs: [test-runtime, test-mcp]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build runtime image
+        run: docker build ./runtime -f runtime/Dockerfile -t technical-office-runtime:ci
+
+      - name: Build MCP image
+        run: docker build ./mcp/autocad-mcp-server -f mcp/autocad-mcp-server/Dockerfile -t technical-office-mcp:ci
+
+      - name: Smoke test with docker compose
+        run: |
+          docker compose up -d runtime
+          sleep 10
+          curl -f http://localhost:7770/health || exit 1
+          docker compose down

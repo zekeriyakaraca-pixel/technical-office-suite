@@ -1,0 +1,9 @@
+{
+  "session_id": "agent:kalite-kontrol:main",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "QC karari varsayimi: uretim/teslim kapisi yalnizca QC ok=true oldugunda acilir. Okunamayan PDF veya onaysiz gorsel aday durumunda teknik-ofis-muduru incelemesi gerekir; partlist ve teslim kapali kalir."
+    }
+  ]
+}

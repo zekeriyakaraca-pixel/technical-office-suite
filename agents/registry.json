@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "suite": "technical-office-suite",
+  "profile": "technical-office",
+  "defaultModel": "technical-office/codex-cli",
+  "agents": [
+    {
+      "id": "teknik-ofis-muduru",
+      "name": "Teknik Ofis Muduru",
+      "role": "manager",
+      "status": "active",
+      "brain": "teknik-ofis-muduru/AGENT.md",
+      "skills": [
+        "_shared"
+      ]
+    },
+    {
+      "id": "autocad-uzman-1",
+      "name": "AutoCAD Uzman 1",
+      "role": "autocad",
+      "status": "active",
+      "brain": "autocad-uzman-1/AGENT.md",
+      "skills": [
+        "_shared"
+      ]
+    },
+    {
+      "id": "autocad-uzman-2",
+      "name": "AutoCAD Uzman 2",
+      "role": "autocad",
+      "status": "active",
+      "brain": "autocad-uzman-2/AGENT.md",
+      "skills": [
+        "_shared"
+      ]
+    },
+    {
+      "id": "kalite-kontrol",
+      "name": "Kalite Kontrol",
+      "role": "quality-control",
+      "status": "active",
+      "brain": "kalite-kontrol/AGENT.md",
+      "skills": [
+        "_shared"
+      ]
+    },
+    {
+      "id": "dokuman-kontrol",
+      "name": "Dokuman Kontrol",
+      "role": "document-control",
+      "status": "active",
+      "brain": "dokuman-kontrol/AGENT.md",
+      "skills": [
+        "_shared"
+      ]
+    }
+  ]
+}

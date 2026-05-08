@@ -1,0 +1,13 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:main",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "Technical Office Runtime ana oturumu temizlendi. Aktif yol: Codex CLI bridge, deterministik PDF/DXF/NC1/QC pipeline, mudur onayli aday akisi ve QC ok=true sonrasi partlist."
+    },
+    {
+      "role": "assistant",
+      "content": "Not: `poz_no` sayfa numarasi degil, teknik poz/parca numarasidir. Metin katmani guvenilir degilse is `manual_review_required` olarak ele alinir; gorsel aday okuma veya manuel poz/olcu girisine teknik-ofis-muduru karar verir."
+    }
+  ]
+}

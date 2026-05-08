@@ -1,0 +1,15 @@
+.state/
+workspace/outputs/
+
+apps/office3d/.next/
+apps/office3d/node_modules/
+apps/office3d/logs/
+
+mcp/autocad-mcp-server/.venv/
+mcp/autocad-mcp-server/.pytest_cache/
+mcp/autocad-mcp-server/.ruff_cache/
+mcp/autocad-mcp-server/tmp/
+
+runtime/.venv/
+runtime/.pytest_cache/
+runtime/__pycache__/
