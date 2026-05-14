@@ -4,12 +4,12 @@
     {
       "role": "user",
       "content": "danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti",
-      "timestamp": 1778153019425
+      "timestamp": 1778754026550
     },
     {
       "role": "assistant",
       "content": "Karar: Bu is tamamlanmis kabul edilmemeli.",
-      "timestamp": 1778153019425
+      "timestamp": 1778754026550
     }
   ]
 }

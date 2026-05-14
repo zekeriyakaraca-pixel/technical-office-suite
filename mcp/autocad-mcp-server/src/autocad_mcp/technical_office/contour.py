@@ -28,28 +28,36 @@ def contour_lwpolyline_points(spec: PlateSpec) -> list[PointBulge]:
     br = reliefs.get("bottom_right")
     tr = reliefs.get("top_right")
     tl = reliefs.get("top_left")
-    bl_radius = bl.radius if bl else 0.0
-    br_radius = br.radius if br else 0.0
-    tr_radius = tr.radius if tr else 0.0
-    tl_radius = tl.radius if tl else 0.0
+    bl_x, bl_y = _corner_offsets(bl)
+    br_x, br_y = _corner_offsets(br)
+    tr_x, tr_y = _corner_offsets(tr)
+    tl_x, tl_y = _corner_offsets(tl)
 
     vertices: list[PointBulge] = [
-        (bl_radius, 0.0, 0.0),
-        (spec.width - br_radius, 0.0, _corner_bulge(br) if br else 0.0),
+        (bl_x, 0.0, 0.0),
+        (spec.width - br_x, 0.0, _corner_bulge(br) if br else 0.0),
     ]
     if br:
-        vertices.append((spec.width, br_radius, 0.0))
+        vertices.append((spec.width, br_y, 0.0))
 
-    vertices.append((spec.width, spec.height - tr_radius, _corner_bulge(tr) if tr else 0.0))
+    vertices.append((spec.width, spec.height - tr_y, _corner_bulge(tr) if tr else 0.0))
     if tr:
-        vertices.append((spec.width - tr_radius, spec.height, 0.0))
+        vertices.append((spec.width - tr_x, spec.height, 0.0))
 
-    vertices.append((tl_radius, spec.height, _corner_bulge(tl) if tl else 0.0))
+    vertices.append((tl_x, spec.height, _corner_bulge(tl) if tl else 0.0))
     if tl:
-        vertices.append((0.0, spec.height - tl_radius, 0.0))
+        vertices.append((0.0, spec.height - tl_y, 0.0))
 
-    vertices.append((0.0, bl_radius, _corner_bulge(bl) if bl else 0.0))
+    vertices.append((0.0, bl_y, _corner_bulge(bl) if bl else 0.0))
     return _dedupe_vertices(vertices)
+
+
+def _corner_offsets(relief) -> tuple[float, float]:
+    if not relief:
+        return 0.0, 0.0
+    x_offset = relief.x_offset if relief.x_offset is not None else relief.radius
+    y_offset = relief.y_offset if relief.y_offset is not None else relief.radius
+    return float(x_offset), float(y_offset)
 
 
 def _corner_bulge(relief) -> float:

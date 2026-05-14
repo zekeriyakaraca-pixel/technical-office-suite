@@ -1,5 +1,17 @@
 .state/
 workspace/outputs/
+.env
+
+# Python bytecode
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Temp plan/note files at repo root
+dashboard-zerinde-*.md
 
 apps/office3d/.next/
 apps/office3d/node_modules/
@@ -12,4 +24,3 @@ mcp/autocad-mcp-server/tmp/
 
 runtime/.venv/
 runtime/.pytest_cache/
-runtime/__pycache__/

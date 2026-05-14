@@ -192,3 +192,20 @@ def _codex_skill_path(source_path: Path) -> Path | None:
     slug = source_path.stem.lower().replace("_", "-")
     candidate = source_path.parents[1] / "codex-skills" / slug / "SKILL.md"
     return candidate if candidate.exists() else None
+
+
+def load_expert_agent_memories(paths: RuntimePaths) -> str:
+    """Tüm uzman ajanların MEMORY.md ve RULES.md dosyalarını okuyup tek blok döndürür.
+    Müdür bağlamına 'Uzman Hafızaları ve Kuralları' olarak enjekte edilir."""
+    expert_ids = ["autocad-uzman-1", "autocad-uzman-2", "kalite-kontrol", "dokuman-kontrol"]
+    agents_root = paths.suite_root / "agents"
+    parts: list[str] = []
+    for agent_id in expert_ids:
+        agent_dir = agents_root / agent_id
+        for fname in ("MEMORY.md", "RULES.md"):
+            fpath = agent_dir / fname
+            if fpath.exists():
+                content = fpath.read_text(encoding="utf-8").strip()
+                if content:
+                    parts.append(f"### {agent_id} / {fname}\n{content}")
+    return "\n\n".join(parts) if parts else ""

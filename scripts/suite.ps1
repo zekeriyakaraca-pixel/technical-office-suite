@@ -134,8 +134,20 @@ function Start-SuiteProcess {
   return $process
 }
 
+function Import-DotEnv {
+  $envFile = Join-Path $SuiteRoot ".env"
+  if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+      if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
+        [System.Environment]::SetEnvironmentVariable($Matches[1].Trim(), $Matches[2].Trim(), "Process")
+      }
+    }
+  }
+}
+
 function Start-Suite {
   New-SuiteDirectories
+  Import-DotEnv
   Stop-Suite
   Start-Sleep -Seconds 1
 

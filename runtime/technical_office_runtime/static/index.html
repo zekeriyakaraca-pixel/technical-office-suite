@@ -33,6 +33,7 @@
     body {
       margin: 0;
       min-height: 100vh;
+      overflow-x: hidden;
       background:
         linear-gradient(180deg, rgba(15, 23, 32, 0.88), rgba(8, 11, 16, 0.98) 320px),
         repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 84px),
@@ -66,9 +67,11 @@
       gap: 16px;
       padding: 16px;
       align-items: start;
+      min-width: 0;
     }
     section {
       position: relative;
+      min-width: 0;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: var(--radius);
@@ -170,7 +173,7 @@
     }
     iframe {
       width: 100%;
-      min-height: 420px;
+      min-height: 380px;
       border: 1px solid var(--line);
       border-radius: 7px;
       background: #f6f8fb;
@@ -196,12 +199,16 @@
     }
     a.pdf-download:hover { text-decoration: none; filter: brightness(1.06); }
     pre {
+      max-width: 100%;
       background: #080d17;
       color: #cfe2f3;
       padding: 12px;
       border: 1px solid rgba(118, 228, 194, 0.13);
       border-radius: 7px;
       overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
       max-height: 260px;
       box-shadow: inset 0 0 20px rgba(0,0,0,0.28);
       scrollbar-color: #334052 #101722;
@@ -251,8 +258,9 @@
     .pill.ok { background: rgba(110, 231, 168, 0.13); color: var(--success); border-color: rgba(110, 231, 168, 0.26); }
     .pill.warn { background: rgba(244, 191, 101, 0.14); color: var(--warning); border-color: rgba(244, 191, 101, 0.25); }
     .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-    .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 0.85fr); gap: 14px; align-items: start; }
-    .stack { display: grid; gap: 14px; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 0.85fr); gap: 14px; align-items: start; min-width: 0; }
+    .grid > *, .stack > *, main > * { min-width: 0; }
+    .stack { display: grid; gap: 14px; min-width: 0; }
     .muted { color: var(--muted); font-size: 13px; }
     .action-message {
       margin-top: 10px;
@@ -316,9 +324,12 @@
       border: 1px solid var(--line);
       border-radius: 7px;
       padding: 12px;
+      max-width: 100%;
       min-height: 150px;
       max-height: 260px;
       overflow: auto;
+      overflow-wrap: anywhere;
+      word-break: break-word;
       background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
       scrollbar-color: #334052 #101722;
     }
@@ -396,6 +407,125 @@
         transition-duration: 0.01ms !important;
       }
     }
+
+    /* ── Monospace font ──────────────────────────────────────── */
+    :root { --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Consolas, monospace; }
+    pre { font-family: var(--font-mono); line-height: 1.6; font-size: 12px; }
+
+    /* ── Tab çubuğu ──────────────────────────────────────────── */
+    .detail-tabs {
+      display: flex;
+      gap: 4px;
+      margin: 14px 0 0;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 0;
+    }
+    .detail-tab {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: 6px 6px 0 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: none;
+      transform: none;
+      filter: none;
+      transition: color 150ms ease-out, background 150ms ease-out;
+    }
+    .detail-tab:hover:not(:disabled) {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.045);
+      transform: none;
+      filter: none;
+    }
+    .detail-tab.tab-active {
+      color: var(--accent);
+      background: var(--panel);
+      border-color: var(--line);
+      border-bottom-color: var(--panel);
+      margin-bottom: -1px;
+    }
+
+    /* ── Okunmamış log badge ─────────────────────────────────── */
+    .tab-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 999px;
+      background: var(--accent-2);
+      color: #0a0b1c;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      animation: softPulse 2s ease-in-out infinite;
+    }
+
+    /* ── Ana Görünüm grid ────────────────────────────────────── */
+    .ana-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+      align-items: stretch;
+      margin-top: 14px;
+    }
+    .ana-grid .span-full { grid-column: 1 / -1; }
+    /* İlk satır: PDF + Chat — flex-column ile eşit yükseklik */
+    .ana-grid > section:nth-child(1),
+    .ana-grid > section:nth-child(2) {
+      display: flex;
+      flex-direction: column;
+    }
+    .ana-grid > section:nth-child(1) iframe {
+      flex: 1;
+      min-height: 380px;
+    }
+    .ana-grid .chat-log { min-height: 320px; max-height: 460px; }
+    .ana-grid textarea { min-height: 110px; resize: vertical; }
+
+    /* ── Sistem Logu grid ────────────────────────────────────── */
+    .log-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+      margin-top: 14px;
+    }
+
+    /* ── İş listesi FSM sol kenarlık renkleri ────────────────── */
+    .job[data-fsm="completed"]          { border-left: 3px solid var(--success); }
+    .job[data-fsm="awaiting_approval"]  { border-left: 3px solid var(--warning); }
+    .job[data-fsm="failed"]             { border-left: 3px solid var(--danger); }
+    .job[data-fsm="producing"],
+    .job[data-fsm="classifying"],
+    .job[data-fsm="extracting"],
+    .job[data-fsm="retrying"]           { border-left: 3px solid var(--accent-2); }
+
+    /* ── Aktif FSM pill nabız animasyonu ─────────────────────── */
+    .pill.fsm-producing, .pill.fsm-extracting,
+    .pill.fsm-classifying, .pill.fsm-retrying {
+      animation: softPulse 2s ease-in-out infinite;
+    }
+
+    /* ── Section odak üst kenarlık ───────────────────────────── */
+    section:focus-within {
+      border-top-color: rgba(118, 228, 194, 0.35);
+      transition: border-top-color 150ms ease-out;
+    }
+
+    @media (max-width: 1000px) {
+      .ana-grid, .log-grid { grid-template-columns: 1fr; }
+      .ana-grid .span-full { grid-column: 1; }
+    }
   </style>
 </head>
 <body>
@@ -434,52 +564,70 @@
       <hr>
       <h2>Isler</h2>
       <div id="jobs"></div>
+      <hr>
+      <h2>Learning Health</h2>
+      <div id="learningHealth" class="muted">Yukleniyor...</div>
+      <div class="actions">
+        <button class="secondary" type="button" id="checkLearningBackfill">Backfill Tara</button>
+      </div>
     </section>
 
-    <section class="stack">
+    <section>
       <div>
-        <h2>Is Detayi</h2>
-        <div id="jobDetail" class="muted">Bir is sec.</div>
+        <h2>İş Detayı</h2>
+        <div id="jobDetail" class="muted">Bir iş seç.</div>
         <div class="actions">
-          <button id="runJob" disabled>Pipeline Calistir</button>
-          <button id="approveSelected" disabled>Secili Adaylari Onayla</button>
-          <button id="createPartlist" class="success" disabled>Partlist Uret</button>
+          <button id="runJob" disabled>Pipeline Çalıştır</button>
+          <button id="approveSelected" data-test-label="Secili Adaylari Onayla" disabled>Seçili Adayları Onayla</button>
+          <button id="createPartlist" class="success" data-test-label="Partlist Uret" disabled>Partlist Üret</button>
         </div>
         <div id="actionMessage" class="action-message"></div>
       </div>
 
-      <div class="grid">
-        <div class="stack">
+      <nav class="detail-tabs" id="detailTabs">
+        <button class="detail-tab tab-active" data-tab="ana-gorunum" onclick="switchTab('ana-gorunum')">
+          Ana Görünüm
+        </button>
+        <button class="detail-tab" data-tab="sistem-logu" onclick="switchTab('sistem-logu')">
+          Sistem Logu
+          <span class="tab-badge" id="logBadge" hidden>0</span>
+        </button>
+      </nav>
+
+      <div class="tab-pane" data-pane="ana-gorunum">
+        <div class="ana-grid">
           <section>
-            <h2>PDF Onizleme</h2>
+            <h2 data-test-label="PDF Onizleme">PDF Önizleme</h2>
             <div id="pdfLinks" class="actions"></div>
             <iframe id="pdfPreview" title="PDF preview"></iframe>
+          </section>
+          <section id="managerChatPanel">
+            <h2>Müdür Chat</h2>
+            <div id="chatLog" class="chat-log"></div>
+            <label>Mesaj</label>
+            <textarea id="chatInput" placeholder="Bu işin durumunu özetle"></textarea>
+            <div class="actions"><button id="sendChat">Gönder</button></div>
           </section>
           <section>
             <h2>Adaylar</h2>
             <div id="candidates" class="muted">Aday yok.</div>
           </section>
           <section>
-            <h2>Ciktilar ve QC</h2>
-            <div id="outputs" class="muted">Cikti yok.</div>
+            <h2>Çıktılar ve QC</h2>
+            <div id="outputs" class="muted">Çıktı yok.</div>
           </section>
         </div>
+      </div>
 
-        <div class="stack">
+      <div class="tab-pane" data-pane="sistem-logu" hidden>
+        <div class="log-grid">
           <section>
             <h2>Diagnostics</h2>
             <pre id="diagnostics">{}</pre>
           </section>
           <section>
-            <h2>Canli Event Stream</h2>
+            <h2>Canlı Event Stream</h2>
             <pre id="events"></pre>
-          </section>
-          <section>
-            <h2>Mudur Chat</h2>
-            <div id="chatLog" class="chat-log"></div>
-            <label>Mesaj</label>
-            <textarea id="chatInput" placeholder="Bu isin durumunu ozetle"></textarea>
-            <div class="actions"><button id="sendChat">Gonder</button></div>
           </section>
         </div>
       </div>
@@ -493,6 +641,32 @@
     let managerHistory = [];
     const managerSessionId = 'agent:teknik-ofis-muduru:dashboard';
     const CHAT_TIMEOUT_MS = 210000;
+
+    let activeTab = 'ana-gorunum';
+    let unreadLogCount = 0;
+
+    function switchTab(name) {
+      activeTab = name;
+      document.querySelectorAll('.detail-tab').forEach(t => t.classList.remove('tab-active'));
+      const targetTab = document.querySelector(`.detail-tab[data-tab="${name}"]`);
+      if (targetTab) targetTab.classList.add('tab-active');
+      document.querySelectorAll('.tab-pane').forEach(p => { p.hidden = p.dataset.pane !== name; });
+      if (name === 'sistem-logu') {
+        unreadLogCount = 0;
+        const badge = document.getElementById('logBadge');
+        if (badge) { badge.textContent = '0'; badge.hidden = true; }
+      }
+    }
+
+    function incrementLogBadge() {
+      if (activeTab === 'sistem-logu') return;
+      unreadLogCount++;
+      const badge = document.getElementById('logBadge');
+      if (badge) {
+        badge.textContent = unreadLogCount > 99 ? '99+' : String(unreadLogCount);
+        badge.hidden = false;
+      }
+    }
 
     const FSM_LABELS = {
       uploaded: 'Yüklendi', classifying: 'Sınıflandırılıyor', classified: 'Sınıflandırıldı',
@@ -513,6 +687,30 @@
       })[ch]);
     }
 
+    function renderChatMessage(message) {
+      const role = message.role === 'user' ? 'Sen' : 'Mudur';
+      return `<div><strong>${role}:</strong> ${escapeHtml(message.content || '').replaceAll('\n', '<br>')}</div>`;
+    }
+
+    function focusManagerChat() {
+      switchTab('ana-gorunum');
+      const panel = document.getElementById('managerChatPanel');
+      if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.setTimeout(() => document.getElementById('chatInput')?.focus(), 250);
+    }
+
+    async function loadManagerSession() {
+      try {
+        const data = await api(`/sessions/history?session_id=${encodeURIComponent(managerSessionId)}&limit=80`);
+        managerHistory = (data.messages || [])
+          .filter(item => (item.role === 'user' || item.role === 'assistant') && item.content)
+          .map(item => ({ role: item.role, content: item.content }));
+        const log = document.getElementById('chatLog');
+        log.innerHTML = managerHistory.slice(-30).map(renderChatMessage).join('');
+        log.scrollTop = log.scrollHeight;
+      } catch (_) {}
+    }
+
     async function loadJobs() {
       const data = await api('/api/jobs');
       const jobs = document.getElementById('jobs');
@@ -521,6 +719,7 @@
         const item = document.createElement('div');
         item.className = 'job' + (job.job_id === selectedJob ? ' active' : '');
         const fsm = job.fsm_state || job.status || 'uploaded';
+        item.dataset.fsm = fsm;
         const fsmLabel = FSM_LABELS[fsm] || fsm;
         item.innerHTML = `<strong>${escapeHtml(job.job_id)}</strong>` +
           `<span class="pill fsm-${escapeHtml(fsm)}" title="FSM: ${escapeHtml(fsm)}">${escapeHtml(fsmLabel)}</span>`;
@@ -550,6 +749,28 @@
           document.getElementById('sysUptime').textContent = u ? (u < 3600 ? Math.round(u/60) + 'dk' : (u/3600).toFixed(1) + 'sa') : '-';
         }
       } catch (_) {}
+      loadLearningHealth().catch(() => {});
+    }
+
+    async function loadLearningHealth() {
+      const data = await api('/api/learning/health');
+      const root = document.getElementById('learningHealth');
+      const missing = data.jobs_missing_retrospective || [];
+      const openNotes = data.jobs_with_open_notes || [];
+      const proposals = data.pending_skill_proposals || {};
+      const registryOk = data.agent_registry_ok ? 'ok' : 'kontrol gerekli';
+      root.innerHTML =
+        `<div class="stat-chip">closure ${data.ok ? 'ok' : 'kontrol'}</div> ` +
+        `<div class="stat-chip">retrospektif eksik: ${missing.length}</div> ` +
+        `<div class="stat-chip">acik not: ${openNotes.length}</div> ` +
+        `<div class="stat-chip">proposal: ${proposals.count || 0}</div> ` +
+        `<div class="stat-chip">registry: ${escapeHtml(registryOk)}</div>`;
+      if (missing.length || openNotes.length) {
+        const lines = [];
+        missing.slice(0, 4).forEach(item => lines.push(`retrospektif eksik: ${item.job_id}`));
+        openNotes.slice(0, 4).forEach(item => lines.push(`acik not: ${item.job_id} (${item.open_note_count})`));
+        root.innerHTML += `<pre>${escapeHtml(lines.join('\n'))}</pre>`;
+      }
     }
 
     async function selectJob(jobId) {
@@ -677,7 +898,10 @@
         const key = eventKey(parsed);
         if (seenEvents.has(key) || isReplayTerminal) {
           if (parsed.type === 'completed' || parsed.type === 'failed' || isReplayTerminal) {
-            eventSource.close();
+            const isNeedsApproval = parsed.payload?.status === 'needs_manager_approval';
+            if (!isNeedsApproval) {
+              eventSource.close();
+            }
             loadJobs().catch(() => {});
           }
           return;
@@ -685,8 +909,12 @@
         seenEvents.add(key);
         events.textContent += (events.textContent ? '\n' : '') + formatEvent(parsed);
         events.scrollTop = events.scrollHeight;
+        incrementLogBadge();
         if (parsed.type === 'completed' || parsed.type === 'failed') {
-          eventSource.close();
+          const isNeedsApproval = parsed.payload?.status === 'needs_manager_approval';
+          if (!isNeedsApproval) {
+            eventSource.close();
+          }
           loadJobs().catch(() => {});
         }
       };
@@ -723,6 +951,20 @@
     };
 
     document.getElementById('refreshJobs').onclick = loadJobs;
+    document.getElementById('checkLearningBackfill').onclick = async () => {
+      setActionMessage('Learning backfill dry-run calisiyor...');
+      try {
+        const data = await api('/api/learning/backfill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dry_run: true })
+        });
+        setActionMessage(`Backfill tarandi: ${data.jobs_returned || 0} islem adayi.`, 'ok');
+        await loadLearningHealth();
+      } catch (err) {
+        setActionMessage(err.message || 'Backfill taramasi yapilamadi.', 'error');
+      }
+    };
     document.getElementById('runJob').onclick = async () => {
       if (!selectedJob) return;
       setActionMessage('Pipeline calisiyor...');
@@ -731,62 +973,35 @@
         const data = await api(`/api/jobs/${encodeURIComponent(selectedJob)}/run`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ autocad_live_policy: 'off' })
+          body: JSON.stringify({ autocad_live_policy: 'off', session_id: managerSessionId })
         });
         if (data.ok === false) throw new Error(resultError(data));
         await selectJob(selectedJob);
-        setActionMessage('Pipeline tamamlandi.', 'ok');
+        const fsmState = data.job?.fsm_state ?? selectedDetail?.fsm_state;
+        if (fsmState === 'awaiting_approval') {
+          setActionMessage('Görsel adaylar hazır — onay bekliyor.', 'ok');
+        } else if (fsmState === 'completed') {
+          setActionMessage('Pipeline tamamlandı.', 'ok');
+        } else if (fsmState === 'failed') {
+          setActionMessage('Pipeline başarısız oldu.', 'error');
+        } else {
+          setActionMessage('Pipeline çalıştı — durum: ' + (fsmState || '?'), 'ok');
+        }
       } catch (err) {
         setActionMessage(err.message || 'Pipeline calistirilamadi.', 'error');
       }
     };
-    document.getElementById('approveSelected').onclick = async () => {
-      const plates = editedCandidates();
-      if (!selectedJob || !plates.length) return;
-      const button = document.getElementById('approveSelected');
-      button.disabled = true;
-      setActionMessage('Adaylar onaylaniyor...');
-      try {
-        const data = await api(`/api/jobs/${encodeURIComponent(selectedJob)}/approve-candidates`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ plates })
-        });
-        if (data.ok === false) throw new Error(resultError(data));
-        await selectJob(selectedJob);
-        setActionMessage('Adaylar onaylandi ve uretim tamamlandi.', 'ok');
-      } catch (err) {
-        setActionMessage(err.message || 'Aday onayi tamamlanamadi.', 'error');
-        button.disabled = false;
-      }
-    };
-    document.getElementById('createPartlist').onclick = async () => {
-      if (!selectedJob) return;
-      setActionMessage('Partlist uretiliyor...');
-      try {
-        const data = await api(`/api/jobs/${encodeURIComponent(selectedJob)}/partlist`, { method: 'POST' });
-        if (data.ok === false) throw new Error(resultError(data.partlist || data));
-        await selectJob(selectedJob);
-        setActionMessage('Partlist hazir.', 'ok');
-      } catch (err) {
-        setActionMessage(err.message || 'Partlist uretilemedi.', 'error');
-      }
-    };
-    document.getElementById('sendChat').onclick = async () => {
-      const input = document.getElementById('chatInput');
-      const button = document.getElementById('sendChat');
-      const message = input.value.trim();
-      if (!message) return;
+    async function sendManagerChatMessage(message) {
       const log = document.getElementById('chatLog');
-      log.innerHTML += `<div><strong>Sen:</strong> ${escapeHtml(message)}</div>`;
+      const sendBtn = document.getElementById('sendChat');
+      log.innerHTML += renderChatMessage({ role: 'user', content: message });
       const thinking = document.createElement('div');
       thinking.className = 'thinking';
       thinking.textContent = 'Mudur dusunuyor...';
       log.appendChild(thinking);
       log.scrollTop = log.scrollHeight;
       managerHistory.push({ role: 'user', content: message });
-      input.value = '';
-      button.disabled = true;
+      sendBtn.disabled = true;
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
       try {
@@ -803,20 +1018,128 @@
         });
         thinking.remove();
         managerHistory.push({ role: 'assistant', content: data.message });
-        log.innerHTML += `<div><strong>Mudur:</strong> ${escapeHtml(data.message).replaceAll('\n', '<br>')}</div>`;
+        log.innerHTML += renderChatMessage({ role: 'assistant', content: data.message });
       } catch (err) {
         thinking.remove();
         const errorMessage = err.name === 'AbortError'
           ? 'Mudur cevabi gecikti. Codex CLI hala calisiyor olabilir; sayfayi kilitlemeden devam edebilirsin.'
           : (err.message || 'Cevap alinamadi.');
-        log.innerHTML += `<div><strong>Mudur:</strong> ${escapeHtml(errorMessage)}</div>`;
+        log.innerHTML += renderChatMessage({ role: 'assistant', content: errorMessage });
       } finally {
         window.clearTimeout(timeoutId);
-        button.disabled = false;
+        sendBtn.disabled = false;
         log.scrollTop = log.scrollHeight;
       }
-    };
+    }
 
+    async function sendManagerStructuredTrigger(trigger) {
+      const log = document.getElementById('chatLog');
+      const sendBtn = document.getElementById('sendChat');
+      const thinking = document.createElement('div');
+      thinking.className = 'thinking';
+      thinking.textContent = 'Mudur dusunuyor...';
+      log.appendChild(thinking);
+      log.scrollTop = log.scrollHeight;
+      sendBtn.disabled = true;
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+      try {
+        const data = await api('/api/manager/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            trigger,
+            history: managerHistory.slice(-16),
+            session_id: managerSessionId,
+            selected_job_id: selectedJob
+          })
+        });
+        thinking.remove();
+        managerHistory.push({ role: 'assistant', content: data.message });
+        log.innerHTML += renderChatMessage({ role: 'assistant', content: data.message });
+      } catch (err) {
+        thinking.remove();
+        const errorMessage = err.name === 'AbortError'
+          ? 'Mudur cevabi gecikti. Codex CLI hala calisiyor olabilir; sayfayi kilitlemeden devam edebilirsin.'
+          : (err.message || 'Cevap alinamadi.');
+        log.innerHTML += renderChatMessage({ role: 'assistant', content: errorMessage });
+      } finally {
+        window.clearTimeout(timeoutId);
+        sendBtn.disabled = false;
+        log.scrollTop = log.scrollHeight;
+      }
+    }
+
+    document.getElementById('approveSelected').onclick = async () => {
+      const plates = editedCandidates();
+      if (!selectedJob || !plates.length) return;
+      const button = document.getElementById('approveSelected');
+      button.disabled = true;
+      setActionMessage('Adaylar onaylaniyor...');
+      try {
+        const data = await api(`/api/jobs/${encodeURIComponent(selectedJob)}/approve-candidates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plates, session_id: managerSessionId })
+        });
+        if (data.ok === false) {
+          const errors = Array.isArray(data.validation_errors) ? data.validation_errors : [];
+          const cornerErrors = errors.filter(e => String(e.error || '').includes('corner_reliefs'));
+          if (cornerErrors.length) {
+            setActionMessage(
+              'Kose bosaltma bilgisi eksik - Mudur Chat soru soruyor.',
+              'error'
+            );
+            button.disabled = false;
+            focusManagerChat();
+            await sendManagerStructuredTrigger({
+              type: 'candidate_validation_blocked',
+              job_id: selectedJob,
+              validation_errors: cornerErrors
+            });
+            return;
+          }
+          throw new Error(resultError(data));
+        }
+        await selectJob(selectedJob);
+        setActionMessage('Adaylar onaylandi; QC, partlist ve kapanis bildirimi tamamlandi.', 'ok');
+      } catch (err) {
+        setActionMessage(err.message || 'Aday onayi tamamlanamadi.', 'error');
+        button.disabled = false;
+      }
+    };
+    document.getElementById('createPartlist').onclick = async () => {
+      if (!selectedJob) return;
+      setActionMessage('Partlist uretiliyor...');
+      try {
+        const data = await api(`/api/jobs/${encodeURIComponent(selectedJob)}/partlist`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: managerSessionId })
+        });
+        if (data.ok === false) throw new Error(resultError(data.partlist || data));
+        await selectJob(selectedJob);
+        setActionMessage('Partlist hazir.', 'ok');
+      } catch (err) {
+        setActionMessage(err.message || 'Partlist uretilemedi.', 'error');
+      }
+    };
+    document.getElementById('sendChat').onclick = async () => {
+      const input = document.getElementById('chatInput');
+      const message = input.value.trim();
+      if (!message) return;
+      input.value = '';
+      await sendManagerChatMessage(message);
+    };
+    document.getElementById('chatInput').addEventListener('keydown', event => {
+      if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.isComposing) return;
+      event.preventDefault();
+      document.getElementById('sendChat').click();
+    });
+
+    loadManagerSession();
+    loadLearningHealth().catch(() => {});
     loadJobs().catch(err => { document.getElementById('jobs').textContent = err.message; });
     loadSystemStatus();
     setInterval(loadSystemStatus, 30000); // Refresh system status every 30s

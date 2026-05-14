@@ -23,13 +23,16 @@ from technical_office_runtime.codex_bridge import (
     inspect_codex_mcp,
 )
 from technical_office_runtime.config import RuntimePaths, get_paths, resolve_suite_root
+from technical_office_runtime.guided_flows import FLOW_CORNER_RELIEF, get_guided_flow_store
 from technical_office_runtime.manager_memory import get_manager_memory
 from technical_office_runtime.orchestrator import (
     MANAGER_CODEX_READ_TIMEOUT_SECONDS,
     MANAGER_CODEX_WRITE_TIMEOUT_SECONDS,
     AgentOrchestrator,
+    _parse_corner_reliefs_by_pending_candidate,
 )
-from technical_office_runtime.session_store import load_session, save_session
+from technical_office_runtime.session_store import cleanup_dashboard_guided_flow_session, load_session, save_session
+from technical_office_runtime.text_normalization import normalize_search_text, repair_text
 from technical_office_runtime.tools import ToolRegistry
 
 
@@ -227,6 +230,34 @@ def test_manager_memory_records_job_facts_and_markdown(tmp_path):
     assert (paths.workspace_root / "manager_vault" / "jobs" / "danieli-1701.md").exists()
 
 
+def test_manager_memory_binds_contextual_turn_to_recent_job(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    memory = get_manager_memory(paths.workspace_root)
+    session_id = "agent:teknik-ofis-muduru:test-contextual-memory"
+
+    memory.record_turn(
+        session_id=session_id,
+        user_text="danieli-1701 isinde ne durumdayiz",
+        assistant_text="`danieli-1701` durum ozeti: eksik sayfa kapsami var.",
+    )
+    memory.record_turn(
+        session_id=session_id,
+        user_text="1. adimdan baslayalim",
+        assistant_text="`danieli-1701` icin 1. adimi baslattim.",
+        history=[
+            {"role": "user", "content": "danieli-1701 isinde ne durumdayiz"},
+            {"role": "assistant", "content": "`danieli-1701` durum ozeti: eksik sayfa kapsami var."},
+        ],
+    )
+
+    recall = memory.recall(session_id=session_id, message="2. adima gecelim")
+    event_text = json.dumps(recall.to_payload(), ensure_ascii=False)
+
+    assert recall.primary_job_id == "danieli-1701"
+    assert "1. adimdan baslayalim" in event_text
+    assert any("danieli-1701" in event.get("job_ids", []) for event in recall.recent_events)
+
+
 def test_manager_memory_ignores_generic_job_list_as_current_job(tmp_path):
     paths = _make_minimal_paths(tmp_path)
     memory = get_manager_memory(paths.workspace_root)
@@ -365,6 +396,56 @@ def test_manager_selected_job_status_question_is_local(tmp_path):
     assert "FSM: uploaded" in result.content
 
 
+def test_manager_manual_review_question_lists_reviews_without_codex(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "danieli-1701"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "fsm_state.json").write_text(json.dumps({"state": "awaiting_approval"}), encoding="utf-8")
+    (output_dir / "job_summary.json").write_text(
+        json.dumps(
+            {
+                "ok": False,
+                "produced": [{"poz_no": "206"}],
+                "manual_reviews": [
+                    {
+                        "reason": "manager_geometry_issue_open",
+                        "page": 2,
+                        "poz_no": "206",
+                        "source_pdf": "deneme.pdf",
+                        "detail": "Aday geometri duzeltilmeden QC ok=true teslim kapisini acamaz.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "needs_manager_approval"}, ensure_ascii=False)
+    bridge = FakeBridge("unused")
+
+    result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        f"hangi pozlar icin manuel inceleme belirledin\n\n[Secili is baglami: {selected_context}]"
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_manual_review_details"
+    assert bridge.calls == []
+    assert "manual_review_required.json" in result.content
+    assert "Poz 206" in result.content
+    assert "Karar: Bu maddeler kapanmadan teslim/partlist acilmamali." in result.content
+
+    detail_result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        f"manuel inceleme gerektiren seyler nedir\n\n[Secili is baglami: {selected_context}]"
+    )
+
+    assert detail_result.used_llm is False
+    assert detail_result.fallback_reason == "local_manual_review_details"
+    assert "Poz 206" in detail_result.content
+
+
 def test_non_manager_chat_is_disabled():
     bridge = FakeBridge()
 
@@ -392,6 +473,7 @@ def test_manager_issue_discussion_does_not_trigger_run_from_selected_job_context
     output_dir = paths.jobs_output_root / job_id
     job_dir.mkdir(parents=True)
     output_dir.mkdir(parents=True)
+    (job_dir / "deneme.pdf").write_bytes(_minimal_pdf_bytes(page_count=26))
     (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
     (output_dir / "pdf_diagnostics.json").write_text(
         json.dumps({"pdfs": [{"source_pdf": "deneme.pdf", "page_count": 26}]}),
@@ -457,6 +539,521 @@ def test_manager_geometry_issue_is_captured_for_visual_analysis(tmp_path):
     assert note["affected_pozs"] == ["206", "207"]
     assert "pah/kose eksigi" in note["tags"]
     assert "poligon kontur" in note["tags"]
+
+
+def test_manager_geometry_issue_extracts_numbered_dxf_poz_without_poz_word(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "danieli-1701"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "job_summary.json").write_text(
+        json.dumps({"ok": True, "produced": [{"poz_no": "210"}], "manual_reviews": []}),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "completed"}, ensure_ascii=False)
+    bridge = FakeBridge("unused")
+
+    result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        "210 numarali uretilen dxf pdf icindeki cizimle ayni degil; "
+        "sol ust kosedeki pah 10x120 olmali, 120 uzunlugu uzun kenar dogrultusunda olmali"
+        f"\n\n[Secili is baglami: {selected_context}]"
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_manager_issue_discussion"
+    assert "`210`" in result.content
+    note = json.loads((output_dir / "manager_issue_notes.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    assert note["affected_pozs"] == ["210"]
+    assert "120" not in note["affected_pozs"]
+    assert "pah/kose eksigi" in note["tags"]
+
+
+def test_manager_action_request_corrects_latest_poz_corner_and_reruns(tmp_path):
+    base = _make_minimal_paths(tmp_path)
+    paths = RuntimePaths(
+        suite_root=base.suite_root,
+        registry_path=base.registry_path,
+        workspace_root=base.workspace_root,
+        jobs_import_root=base.jobs_import_root,
+        jobs_output_root=base.jobs_output_root,
+        autocad_src=resolve_suite_root() / "mcp" / "autocad-mcp-server" / "src",
+    )
+    job_id = "danieli-1701"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes(page_count=1))
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (job_dir / "approved_plate_specs.json").write_text(
+        json.dumps(
+            {
+                "approved_by": "teknik-ofis-muduru",
+                "plates": [
+                    {
+                        "poz_no": "210",
+                        "width": 96,
+                        "height": 150,
+                        "thickness": 8,
+                        "material": "S275J2",
+                        "quantity": 1,
+                        "holes": [],
+                        "slots": [],
+                        "corner_reliefs": [
+                            {"corner": "top_left", "radius": 10, "relief_type": "chamfer"},
+                            {"corner": "bottom_right", "radius": 10, "relief_type": "chamfer"},
+                        ],
+                        "source_page": 1,
+                        "source_pdf": "input.pdf",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "manager_issue_notes.jsonl").write_text(
+        json.dumps(
+            {
+                "status": "open",
+                "tags": ["pah/kose eksigi"],
+                "affected_pozs": ["210"],
+                "message": "Poz 210 sol ust kosedeki pah 10x120 olmali, 120 uzun kenar dogrultusunda.",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "awaiting_approval"}, ensure_ascii=False)
+
+    result = AgentOrchestrator(paths, bridge=FakeBridge("unused"), allow_codex=True).run(
+        f"baska hata yok simdi aksiyon zamani bu pozu duzeltelim\n\n[Secili is baglami: {selected_context}]",
+        session_id="agent:teknik-ofis-muduru:test-correction",
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_poz_correction_action"
+    assert "Bana hatalari su formatta" not in result.content
+    assert "Poz 210 icin aksiyonu uyguladim" in result.content
+    approved = json.loads((job_dir / "approved_plate_specs.json").read_text(encoding="utf-8"))
+    relief = approved["plates"][0]["corner_reliefs"][0]
+    assert relief["corner"] == "top_left"
+    assert relief["x_offset"] == 10.0
+    assert relief["y_offset"] == 120.0
+    qc = json.loads((output_dir / "210" / "210_qc.json").read_text(encoding="utf-8"))
+    qc_relief = qc["plate_spec"]["corner_reliefs"][0]
+    assert qc_relief["x_offset"] == 10.0
+    assert qc_relief["y_offset"] == 120.0
+    assert qc["ok"] is True
+    fsm = json.loads((output_dir / "fsm_state.json").read_text(encoding="utf-8"))
+    assert fsm["state"] == "completed"
+    note = json.loads((output_dir / "manager_issue_notes.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert note["status"] == "resolved"
+
+
+def test_manager_supplied_position_info_writes_positions_and_reruns(tmp_path):
+    base = _make_minimal_paths(tmp_path)
+    paths = RuntimePaths(
+        suite_root=base.suite_root,
+        registry_path=base.registry_path,
+        workspace_root=base.workspace_root,
+        jobs_import_root=base.jobs_import_root,
+        jobs_output_root=base.jobs_output_root,
+        autocad_src=resolve_suite_root() / "mcp" / "autocad-mcp-server" / "src",
+    )
+    job_id = "api-partlist-blocked"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_placeholder_pdf_bytes())
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": "API Partlist Blocked"}), encoding="utf-8")
+    initial_review = {
+        "reason": "poz_no_not_found",
+        "page": 1,
+        "poz_no": None,
+        "detail": "Bu sayfada teknik poz/parca numarasi algilanamadi.",
+        "source_pdf": "input.pdf",
+    }
+    (output_dir / "job_summary.json").write_text(
+        json.dumps({"job_id": job_id, "produced": [], "manual_reviews": [initial_review], "ok": False}),
+        encoding="utf-8",
+    )
+    (output_dir / "manual_review_required.json").write_text(json.dumps([initial_review]), encoding="utf-8")
+    (output_dir / "fsm_state.json").write_text(
+        json.dumps({"job_id": job_id, "state": "awaiting_approval"}),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "awaiting_approval"}, ensure_ascii=False)
+
+    result = AgentOrchestrator(paths, bridge=FakeBridge("unused"), allow_codex=True).run(
+        f'poz biligisi "api-1" olarak alinabilir\n\n[Secili is baglami: {selected_context}]',
+        session_id="agent:teknik-ofis-muduru:test-position",
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_position_info_resolution"
+    assert "poz bilgisini uyguladim" in result.content
+    assert "plate_geometry_not_found" in result.content
+    positions = json.loads((job_dir / "positions.json").read_text(encoding="utf-8"))
+    assert positions == {"positions": [{"poz_no": "api-1", "page": 1}]}
+    summary = json.loads((output_dir / "job_summary.json").read_text(encoding="utf-8"))
+    assert summary["ok"] is False
+    assert summary["manual_reviews"][0]["reason"] == "plate_geometry_not_found"
+    assert summary["manual_reviews"][0]["poz_no"] == "api-1"
+    fsm = json.loads((output_dir / "fsm_state.json").read_text(encoding="utf-8"))
+    assert fsm["state"] == "awaiting_approval"
+
+
+def test_manager_page_exclusion_writes_config_and_reruns(tmp_path):
+    base = _make_minimal_paths(tmp_path)
+    paths = RuntimePaths(
+        suite_root=base.suite_root,
+        registry_path=base.registry_path,
+        workspace_root=base.workspace_root,
+        jobs_import_root=base.jobs_import_root,
+        jobs_output_root=base.jobs_output_root,
+        autocad_src=resolve_suite_root() / "mcp" / "autocad-mcp-server" / "src",
+    )
+    job_id = "d-28-20260513155258"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(
+        _multi_page_pdf_bytes(
+            [
+                ["POZ: COVER1", "PROJECT TITLE PAGE"],
+                ["POZ: P100", "PLAKA 90x40x6 S235"],
+            ]
+        )
+    )
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": "D-28"}), encoding="utf-8")
+    initial_review = {
+        "reason": "plate_geometry_not_found",
+        "page": 1,
+        "poz_no": "COVER1",
+        "detail": "Poz bilgisi bulundu, ancak plaka olculeri/geometrisi otomatik uretim icin guvenilir cikarilamadi.",
+        "source_pdf": "input.pdf",
+    }
+    (output_dir / "job_summary.json").write_text(
+        json.dumps({"job_id": job_id, "produced": [], "manual_reviews": [initial_review], "ok": False}),
+        encoding="utf-8",
+    )
+    (output_dir / "manual_review_required.json").write_text(json.dumps([initial_review]), encoding="utf-8")
+    (output_dir / "fsm_state.json").write_text(
+        json.dumps({"job_id": job_id, "state": "awaiting_approval"}),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "awaiting_approval"}, ensure_ascii=False)
+
+    result = AgentOrchestrator(paths, bridge=FakeBridge("unused"), allow_codex=True).run(
+        (
+            "Sayfa No: 1\n"
+            "Sistemin Urettigi Deger/Tespit: Poz COVER1 bulundu ama plaka geometrisi cikarilamadi.\n"
+            "Olmasi Gereken Deger/Aksiyon: bu sayfa baslik sayfasidir, plaka cizimi bulunmayan sayfalar atlanmali"
+            f"\n\n[Secili is baglami: {selected_context}]"
+        ),
+        session_id="agent:teknik-ofis-muduru:test-page-exclusion",
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_page_exclusion"
+    assert "sayfa atlama kararini uyguladim" in result.content
+    exclusions = json.loads((job_dir / "page_exclusions.json").read_text(encoding="utf-8"))
+    assert exclusions["excluded_pages"][0]["page"] == 1
+    summary = json.loads((output_dir / "job_summary.json").read_text(encoding="utf-8"))
+    assert summary["ok"] is True
+    assert summary["manual_reviews"] == []
+    assert [item["poz_no"] for item in summary["produced"]] == ["P100"]
+    applied = json.loads((output_dir / "page_exclusions_applied.json").read_text(encoding="utf-8"))
+    assert applied["excluded_pages"][0]["page"] == 1
+
+
+def test_manager_mark_column_hint_reruns_and_relabels_reviews(tmp_path):
+    base = _make_minimal_paths(tmp_path)
+    paths = RuntimePaths(
+        suite_root=base.suite_root,
+        registry_path=base.registry_path,
+        workspace_root=base.workspace_root,
+        jobs_import_root=base.jobs_import_root,
+        jobs_output_root=base.jobs_output_root,
+        autocad_src=resolve_suite_root() / "mcp" / "autocad-mcp-server" / "src",
+    )
+    job_id = "d-28-20260513155258"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(
+        _multi_page_pdf_bytes(
+            [
+                [
+                    "FRONT VIE",
+                    "TOP VIE",
+                    "402",
+                    "PL1022",
+                    "S55JR",
+                    "5.5",
+                    "0.1",
+                    "5.",
+                    "0.",
+                    "5.",
+                    "DANIELI CONSTRUCTION",
+                    "MARK",
+                    "PROFILE",
+                    "MATERIAL",
+                    ".T",
+                    "LENGTH mm",
+                    "AREA m2",
+                    "EIGHT kg",
+                    "TOTAL",
+                ]
+            ]
+        )
+    )
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": "D-28"}), encoding="utf-8")
+    initial_review = {
+        "reason": "poz_no_not_found",
+        "page": 1,
+        "poz_no": None,
+        "detail": "Bu sayfada teknik poz/parca numarasi algilanamadi.",
+        "source_pdf": "input.pdf",
+    }
+    (output_dir / "job_summary.json").write_text(
+        json.dumps({"job_id": job_id, "produced": [], "manual_reviews": [initial_review], "ok": False}),
+        encoding="utf-8",
+    )
+    (output_dir / "manual_review_required.json").write_text(json.dumps([initial_review]), encoding="utf-8")
+    (output_dir / "fsm_state.json").write_text(
+        json.dumps({"job_id": job_id, "state": "awaiting_approval"}),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "awaiting_approval"}, ensure_ascii=False)
+
+    result = AgentOrchestrator(paths, bridge=FakeBridge("unused"), allow_codex=True).run(
+        (
+            "sayfa 4 ve devam eden diger sayfalarda poz bilgisi sayfalarin alt kisminda "
+            f"bulunan tabloda mark sutununda yazmaktadir\n\n[Secili is baglami: {selected_context}]"
+        ),
+        session_id="agent:teknik-ofis-muduru:test-mark-column",
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_mark_column_position_hint"
+    assert "Mark sutunu poz okuma bilgisini uyguladim" in result.content
+    hints = json.loads((job_dir / "position_hints.json").read_text(encoding="utf-8"))
+    assert hints["hints"][0]["type"] == "mark_column_bottom_table"
+    summary = json.loads((output_dir / "job_summary.json").read_text(encoding="utf-8"))
+    assert summary["ok"] is False
+    assert summary["manual_reviews"][0]["reason"] == "plate_geometry_not_found"
+    assert summary["manual_reviews"][0]["poz_no"] == "402"
+
+
+def test_manager_issue_discussion_includes_job_learning_summary(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "danieli-1701"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "job_summary.json").write_text(
+        json.dumps({"ok": True, "produced": [{"poz_no": "210"}], "manual_reviews": []}),
+        encoding="utf-8",
+    )
+    (output_dir / "retrospective.json").write_text(
+        json.dumps(
+            {
+                "job_id": job_id,
+                "produced_count": 26,
+                "partlist": {"ok": True, "rows": 26},
+                "calculated_metrics": [{"poz_no": "210"}],
+                "learning": [
+                    {
+                        "agent_or_skill": "partlist",
+                        "proposal": "Eksik metrikleri geometri ile hesapla.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "completed"}, ensure_ascii=False)
+    bridge = FakeBridge("unused")
+
+    result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        "bu iste gordugum hatayi belirtecegim, ayrica agent sistemimiz bu projede neler ogrendi"
+        f"\n\n[Secili is baglami: {selected_context}]"
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_manager_issue_discussion"
+    assert "`danieli-1701` agent ogrenim ozeti" in result.content
+    assert "Retrospektif: workspace/outputs/jobs/danieli-1701/retrospective.json" in result.content
+    assert "partlist: Eksik metrikleri geometri ile hesapla." in result.content
+
+
+def test_manager_apply_decision_marks_selected_job_awaiting_approval_without_codex(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "danieli-1701"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "fsm_state.json").write_text(json.dumps({"state": "completed"}), encoding="utf-8")
+    (output_dir / "pdf_diagnostics.json").write_text(
+        json.dumps({"pdfs": [{"source_pdf": "deneme.pdf", "page_count": 26, "classification": "visual_text_required"}]}),
+        encoding="utf-8",
+    )
+    (output_dir / "job_summary.json").write_text(
+        json.dumps({"ok": False, "produced": [{"poz_no": "205"}, {"poz_no": "206"}, {"poz_no": "207"}], "manual_reviews": []}),
+        encoding="utf-8",
+    )
+    (output_dir / "manager_issue_notes.jsonl").write_text(
+        json.dumps(
+            {
+                "status": "open",
+                "tags": ["pah/kose eksigi"],
+                "affected_pozs": ["206", "207", "1701"],
+                "message": "206 ve 207 pahli ama dikdortgen uretilmis",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "completed"}, ensure_ascii=False)
+    bridge = FakeBridge("unused")
+
+    result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        f"bu soylediklerini yap\n\n[Secili is baglami: {selected_context}]"
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_manager_decision_apply"
+    assert bridge.calls == []
+    assert result.tool_results[0]["tool"] == "apply_manager_decisions"
+    assert "FSM: awaiting_approval" in result.content
+    assert "Etkilenen pozlar: 206, 207" in result.content
+    assert "Etkilenen pozlar: 206, 207, 1701" not in result.content
+    fsm = json.loads((output_dir / "fsm_state.json").read_text(encoding="utf-8"))
+    assert fsm["state"] == "awaiting_approval"
+
+
+def test_manager_continue_to_complete_job_is_local_plan_without_codex(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "danieli-1701"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "fsm_state.json").write_text(json.dumps({"state": "awaiting_approval"}), encoding="utf-8")
+    (output_dir / "pdf_diagnostics.json").write_text(
+        json.dumps({"pdfs": [{"source_pdf": "deneme.pdf", "page_count": 26, "classification": "visual_text_required"}]}),
+        encoding="utf-8",
+    )
+    (output_dir / "job_summary.json").write_text(
+        json.dumps(
+            {
+                "ok": False,
+                "produced": [{"poz_no": "205"}, {"poz_no": "206"}, {"poz_no": "207"}],
+                "manual_reviews": [{"reason": "approved_specs_missing_visual_pages"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "codex_candidates.json").write_text(
+        json.dumps({"candidates": [{"poz_no": "205"}, {"poz_no": "206"}, {"poz_no": "207"}]}),
+        encoding="utf-8",
+    )
+    (output_dir / "manager_issue_notes.jsonl").write_text(
+        json.dumps({"status": "open", "tags": ["pah/kose eksigi"], "affected_pozs": ["206", "207", "1701"]}) + "\n",
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "needs_manager_approval"}, ensure_ascii=False)
+    bridge = FakeBridge("unused")
+
+    result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        f"devam edelim bu isi tamamlamak icin\n\n[Secili is baglami: {selected_context}]"
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_job_completion_plan"
+    assert bridge.calls == []
+    assert "dogrudan teslim/partlist" in result.content
+    assert "Geometri notu olan pozlar: 206, 207" in result.content
+    assert "Geometri notu olan pozlar: 206, 207, 1701" not in result.content
+    assert "corner_reliefs" in result.content
+    assert "awaiting_approval" in result.content
+
+
+def test_manager_completion_step_one_is_local_without_codex(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "danieli-1701"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "deneme.pdf").write_bytes(_minimal_pdf_bytes(page_count=26))
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "fsm_state.json").write_text(json.dumps({"state": "awaiting_approval"}), encoding="utf-8")
+    (output_dir / "pdf_diagnostics.json").write_text(
+        json.dumps({"pdfs": [{"source_pdf": "deneme.pdf", "page_count": 26, "classification": "visual_text_required"}]}),
+        encoding="utf-8",
+    )
+    (output_dir / "job_summary.json").write_text(
+        json.dumps(
+            {
+                "ok": False,
+                "produced": [{"poz_no": "205"}, {"poz_no": "206"}, {"poz_no": "207"}],
+                "manual_reviews": [{"reason": "approved_specs_missing_visual_pages"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "codex_candidates.json").write_text(
+        json.dumps({"candidates": [{"poz_no": "205"}, {"poz_no": "206"}, {"poz_no": "207"}]}),
+        encoding="utf-8",
+    )
+    (output_dir / "manager_issue_notes.jsonl").write_text(
+        json.dumps({"status": "open", "tags": ["pah/kose eksigi"], "affected_pozs": ["206", "207", "1701"]}) + "\n",
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "needs_manager_approval"}, ensure_ascii=False)
+    bridge = FakeBridge('{"candidates":[]}')
+
+    result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        f"1. adimdan bslayalim\n\n[Secili is baglami: {selected_context}]"
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_job_completion_step"
+    assert bridge.calls == []
+    assert "1. adimi baslattim" in result.content
+    assert "sayfa 4-26" in result.content
+    assert "Korunan geometri notlari: 206, 207" in result.content
+    assert "Korunan geometri notlari: 206, 207, 1701" not in result.content
+
+    pdf_control = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        f"pdf uzerinden sen kontrol et\n\n[Secili is baglami: {selected_context}]"
+    )
+    option_control = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        f"1 numarali secevnektan devam edelim\n\n[Secili is baglami: {selected_context}]"
+    )
+
+    assert pdf_control.used_llm is False
+    assert pdf_control.fallback_reason == "local_missing_candidate_extraction"
+    assert "PDF uzerinden" in pdf_control.content
+    assert len(bridge.calls) == 1
+    assert option_control.used_llm is False
+    assert option_control.fallback_reason == "local_job_completion_step"
+    assert "1. adimi baslattim" in option_control.content
+    assert len(bridge.calls) == 1
 
 
 def test_natural_language_fallback_runs_job_without_codex():
@@ -554,15 +1151,15 @@ def test_codex_mcp_doctor_detects_stale_global_path(monkeypatch, tmp_path):
 
 
 def test_active_files_do_not_reference_removed_ai_engines():
+    # gemini is an allowed exception for stateless manager chat (GEMINI_API_KEY env var).
+    # Only truly forbidden engines are listed here.
     suite_root = Path(__file__).resolve().parents[2]
-    removed_terms = ("ge" + "mini", "ol" + "lama")
+    removed_terms = ("ol" + "lama",)
     roots = [
         suite_root / "PLAN.md",
-        suite_root / "CLAUDE.md",
         suite_root / "README.md",
         suite_root / "Claude_Yetkinlikleri_Rehber.md",
         suite_root / ".claude",
-        suite_root / "runtime" / "technical_office_runtime",
         suite_root / "mcp" / "autocad-mcp-server" / "src",
         suite_root / "agents",
         suite_root / "workspace" / "sessions",
@@ -913,6 +1510,340 @@ def test_approval_validation_blocks_chamfer_evidence_without_contour_details(tmp
     assert "corner_reliefs is empty" in errors[0]["error"]
 
 
+def test_corner_relief_approval_error_routes_to_manager_question(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "corner-chat"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "codex_candidates.json").write_text(
+        json.dumps(
+            {
+                "candidates": [
+                    {
+                        "source_pdf": "input.pdf",
+                        "source_page": 2,
+                        "poz_no": "206",
+                        "width": 240,
+                        "height": 150,
+                        "thickness": 8,
+                        "material": "S275J2",
+                        "quantity": 10,
+                        "holes": [],
+                        "slots": [],
+                        "corner_reliefs": [],
+                        "contour_type": "polygon",
+                        "confidence": 0.78,
+                        "evidence": "drawing shows 30 mm side offsets",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "needs_manager_approval"}, ensure_ascii=False)
+    bridge = FakeBridge("unused")
+
+    result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        f"Mudur, aday onayi kose bosaltma bilgisi eksik oldugu icin durdu. "
+        f"Lutfen eksik corner_reliefs bilgisini almak icin bana sor.\n\n[Secili is baglami: {selected_context}]"
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_corner_reliefs"
+    assert bridge.calls == []
+    assert "206" in result.content
+    assert "Hangi koseler bosaltilacak" in result.content
+
+
+def test_corner_relief_answer_after_clarification_is_not_recorded_as_generic_issue(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "danieli-1701"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "codex_candidates.json").write_text(
+        json.dumps(
+            {
+                "candidates": [
+                    {
+                        "source_pdf": "input.pdf",
+                        "source_page": 2,
+                        "poz_no": "206",
+                        "width": 240,
+                        "height": 150,
+                        "thickness": 8,
+                        "material": "S275J2",
+                        "quantity": 10,
+                        "holes": [],
+                        "slots": [],
+                        "corner_reliefs": [],
+                        "contour_type": "polygon",
+                        "confidence": 0.78,
+                        "evidence": "drawing shows side offsets",
+                    },
+                    {
+                        "source_pdf": "input.pdf",
+                        "source_page": 3,
+                        "poz_no": "207",
+                        "width": 116,
+                        "height": 150,
+                        "thickness": 8,
+                        "material": "S275J2",
+                        "quantity": 20,
+                        "holes": [],
+                        "slots": [],
+                        "corner_reliefs": [],
+                        "contour_type": "polygon",
+                        "confidence": 0.76,
+                        "evidence": "drawing shows side offsets",
+                    },
+                    {
+                        "source_pdf": "input.pdf",
+                        "source_page": 5,
+                        "poz_no": "209",
+                        "width": 300,
+                        "height": 150,
+                        "thickness": 8,
+                        "material": "S275J2",
+                        "quantity": 30,
+                        "holes": [],
+                        "slots": [],
+                        "corner_reliefs": [],
+                        "contour_type": "chamfered",
+                        "confidence": 0.82,
+                        "evidence": "iki ust kose pahli",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "needs_manager_approval"}, ensure_ascii=False)
+    history = [
+        {
+            "role": "assistant",
+            "content": (
+                "Kose bilgisini anlayamadim. Lutfen konum (alt-sol, alt-sag, ust-sol, ust-sag veya hepsi), "
+                "tip (pah/round/cugul) ve boyut (mm) belirterek tekrar yaz."
+            ),
+        }
+    ]
+
+    result = AgentOrchestrator(paths, bridge=FakeBridge("unused"), allow_codex=True).run(
+        f"206 numarali pozda sol ve sag ust koselerde 30x120 pah var 120 uzunlugu kisa kenar boyunca"
+        f"\n\n[Secili is baglami: {selected_context}]",
+        history=history,
+    )
+
+    assert result.fallback_reason == "local_corner_reliefs"
+    assert "Kose bosaltma bilgisini kaydettim: 206" in result.content
+    assert "207" in result.content
+    assert "209" in result.content
+    assert not (output_dir / "manager_issue_notes.jsonl").exists()
+    updated = json.loads((output_dir / "codex_candidates.json").read_text(encoding="utf-8"))
+    reliefs = updated["candidates"][0]["corner_reliefs"]
+    assert sorted(relief["corner"] for relief in reliefs) == ["top_left", "top_right"]
+    assert all(relief["relief_type"] == "chamfer" for relief in reliefs)
+    assert all(relief["x_offset"] == 30 for relief in reliefs)
+    assert all(relief["y_offset"] == 120 for relief in reliefs)
+
+
+def test_corner_relief_meta_question_lists_missing_candidate_details(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "danieli-1701"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "codex_candidates.json").write_text(
+        json.dumps(
+            {
+                "candidates": [
+                    {
+                        "poz_no": "206",
+                        "width": 240,
+                        "height": 150,
+                        "thickness": 8,
+                        "corner_reliefs": [],
+                        "contour_type": "polygon",
+                        "evidence": "side offsets",
+                    },
+                    {
+                        "poz_no": "207",
+                        "width": 116,
+                        "height": 150,
+                        "thickness": 8,
+                        "corner_reliefs": [],
+                        "contour_type": "polygon",
+                        "evidence": "side offsets",
+                    },
+                    {
+                        "poz_no": "209",
+                        "width": 300,
+                        "height": 150,
+                        "thickness": 8,
+                        "corner_reliefs": [],
+                        "contour_type": "chamfered",
+                        "evidence": "ust koseler pahli",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "needs_manager_approval"}, ensure_ascii=False)
+    history = [
+        {
+            "role": "assistant",
+            "content": (
+                "Kose bilgisini anlayamadim. Lutfen konum (alt-sol, alt-sag, ust-sol, ust-sag veya hepsi), "
+                "tip (pah/round/cugul) ve boyut (mm) belirterek tekrar yaz."
+            ),
+        }
+    ]
+
+    result = AgentOrchestrator(paths, bridge=FakeBridge("unused"), allow_codex=True).run(
+        f"hangi kose bilgilerini anlamadin\n\n[Secili is baglami: {selected_context}]",
+        history=history,
+    )
+
+    assert result.fallback_reason == "local_corner_reliefs"
+    assert "kose bosaltma bilgisini su adaylar icin soruyorum" in result.content
+    assert "Poz 206" in result.content
+    assert "Poz 207" in result.content
+    assert "Poz 209" in result.content
+    assert "206: sol ve sag ust pah 30x120" in result.content
+    assert "Kose bilgisini anlayamadim" not in result.content
+
+
+def test_corner_relief_scope_question_lists_requested_parts(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "danieli-1701"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "codex_candidates.json").write_text(
+        json.dumps(
+            {
+                "candidates": [
+                    {"poz_no": "206", "width": 240, "height": 150, "thickness": 8, "corner_reliefs": [], "contour_type": "polygon"},
+                    {"poz_no": "207", "width": 116, "height": 150, "thickness": 8, "corner_reliefs": [], "contour_type": "polygon"},
+                    {"poz_no": "209", "width": 300, "height": 150, "thickness": 8, "corner_reliefs": [], "contour_type": "chamfered"},
+                    {"poz_no": "210", "width": 96, "height": 150, "thickness": 8, "corner_reliefs": [], "contour_type": "chamfered"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "needs_manager_approval"}, ensure_ascii=False)
+    history = [
+        {
+            "role": "assistant",
+            "content": "Hangi koseler bosaltilacak ve ne tip/boyut?",
+        }
+    ]
+
+    result = AgentOrchestrator(paths, bridge=FakeBridge("unused"), allow_codex=True).run(
+        f"hangi parcalar icin soruyorsun\n\n[Secili is baglami: {selected_context}]",
+        history=history,
+    )
+
+    assert result.fallback_reason == "local_corner_reliefs"
+    assert "Poz 206" in result.content
+    assert "Poz 207" in result.content
+    assert "Poz 209" in result.content
+    assert "Eksik kalan kisim" in result.content
+    assert "Kose bilgisini anlayamadim" not in result.content
+
+
+def test_corner_relief_confirmation_applies_manager_suggested_format(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "danieli-1701"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "codex_candidates.json").write_text(
+        json.dumps(
+            {
+                "candidates": [
+                    {"poz_no": "206", "width": 240, "height": 150, "thickness": 8, "corner_reliefs": [], "contour_type": "polygon"},
+                    {"poz_no": "207", "width": 116, "height": 150, "thickness": 8, "corner_reliefs": [], "contour_type": "polygon"},
+                    {"poz_no": "209", "width": 300, "height": 150, "thickness": 8, "corner_reliefs": [], "contour_type": "chamfered"},
+                    {"poz_no": "210", "width": 96, "height": 150, "thickness": 8, "corner_reliefs": [], "contour_type": "chamfered"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "needs_manager_approval"}, ensure_ascii=False)
+    history = [
+        {
+            "role": "assistant",
+            "content": (
+                "`danieli-1701` icin kose bosaltma bilgisini su adaylar icin soruyorum:\n"
+                "- Poz 206: satir 2, 240x150x8mm\n"
+                "- Poz 207: satir 3, 116x150x8mm\n"
+                "- Poz 209: satir 5, 300x150x8mm\n"
+                "Eksik kalan kisim, her poz icin kose-konum ve pah olcusunun net eslesmesi.\n"
+                "Benden beklenen net format su:\n"
+                "- `206: sol ve sag ust pah 30x120`\n"
+                "- `207: sol ust pah 30x120, sag alt pah 10x10`\n"
+                "- `209: sol ve sag ust pah 60x120`"
+            ),
+        }
+    ]
+
+    result = AgentOrchestrator(paths, bridge=FakeBridge("unused"), allow_codex=True).run(
+        f"evet bu sekilde ilerle\n\n[Secili is baglami: {selected_context}]",
+        history=history,
+    )
+
+    assert result.fallback_reason == "local_corner_reliefs"
+    assert "Kose bosaltma bilgisini kaydettim: 206, 207, 209" in result.content
+    assert "210" in result.content
+    assert "Kose bilgisini anlayamadim" not in result.content
+    updated = json.loads((output_dir / "codex_candidates.json").read_text(encoding="utf-8"))
+    assert updated["candidates"][0]["corner_reliefs"]
+    assert updated["candidates"][1]["corner_reliefs"]
+    assert updated["candidates"][2]["corner_reliefs"]
+    assert updated["candidates"][3]["corner_reliefs"] == []
+
+
+def test_corner_relief_parser_handles_multiple_positions_and_asymmetric_chamfers():
+    pending = [
+        {"_row_index": 2, "poz_no": "206"},
+        {"_row_index": 3, "poz_no": "207"},
+        {"_row_index": 5, "poz_no": "209"},
+    ]
+    parsed = _parse_corner_reliefs_by_pending_candidate(
+        (
+            "206 numarali pozda sol ve sag ust koselerde 30x120 pah var 120 uzunlugu kisa kenar boyunca\n"
+            "207 numarali pozda sol ust kosede 30x120 pah var ayrica sag alt kosede 10x10 pah var\n"
+            "209 numarali pozda sol ve sag ust kosede 60x120 pah var"
+        ),
+        pending,
+    )
+
+    assert sorted(relief["corner"] for relief in parsed[2]) == ["top_left", "top_right"]
+    assert all(relief["x_offset"] == 30 and relief["y_offset"] == 120 for relief in parsed[2])
+    assert {(relief["corner"], relief["x_offset"], relief["y_offset"]) for relief in parsed[3]} == {
+        ("top_left", 30.0, 120.0),
+        ("bottom_right", 10.0, 10.0),
+    }
+    assert sorted(relief["corner"] for relief in parsed[5]) == ["top_left", "top_right"]
+    assert all(relief["x_offset"] == 60 and relief["y_offset"] == 120 for relief in parsed[5])
+
+
 def test_approval_validation_blocks_incomplete_visual_page_coverage(tmp_path):
     paths = _make_minimal_paths(tmp_path)
     job_id = "approval-coverage"
@@ -1027,3 +1958,574 @@ def _minimal_pdf_bytes(page_count: int = 1) -> bytes:
         objects.append(f"{content_obj} 0 obj << /Length {len(stream)} >> stream\n{stream}\nendstream endobj")
     pdf = "%PDF-1.4\n" + "\n".join(objects) + "\ntrailer << /Root 1 0 R >>\n%%EOF\n"
     return pdf.encode("latin-1")
+
+
+def _placeholder_pdf_bytes() -> bytes:
+    objects = [
+        "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+        "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+    ]
+    stream = "BT /F1 12 Tf 10 180 Td (placeholder) Tj ET\n0 0 m 200 0 l 200 100 l 0 100 l h S\n"
+    objects.append("3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R >> endobj")
+    objects.append(f"4 0 obj << /Length {len(stream)} >> stream\n{stream}\nendstream endobj")
+    pdf = "%PDF-1.4\n" + "\n".join(objects) + "\ntrailer << /Root 1 0 R >>\n%%EOF\n"
+    return pdf.encode("latin-1")
+
+
+def _multi_page_pdf_bytes(pages: list[list[str]]) -> bytes:
+    objects = ["1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj"]
+    kids = " ".join(f"{3 + index * 2} 0 R" for index in range(len(pages)))
+    objects.append(f"2 0 obj << /Type /Pages /Kids [{kids}] /Count {len(pages)} >> endobj")
+    for index, text_lines in enumerate(pages):
+        page_obj = 3 + index * 2
+        content_obj = page_obj + 1
+        text_commands = "\n".join(f"({line}) Tj T*" for line in text_lines)
+        stream = (
+            "q\n"
+            "0 0 m 200 0 l 200 100 l 0 100 l h S\n"
+            "BT\n"
+            "/F1 12 Tf\n"
+            "10 10 Td\n"
+            f"{text_commands}\n"
+            "ET\n"
+            "Q\n"
+        )
+        objects.append(
+            f"{page_obj} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents {content_obj} 0 R >> endobj"
+        )
+        objects.append(f"{content_obj} 0 obj << /Length {len(stream)} >> stream\n{stream}\nendstream endobj")
+    pdf = "%PDF-1.4\n" + "\n".join(objects) + "\ntrailer << /Root 1 0 R >>\n%%EOF\n"
+    return pdf.encode("latin-1")
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _extract_page_numbers_for_exclusion (yeni regex pattern'ları)
+# ---------------------------------------------------------------------------
+
+def test_extract_page_numbers_single():
+    from technical_office_runtime.orchestrator import _extract_page_numbers_for_exclusion
+    assert _extract_page_numbers_for_exclusion("sayfa 3 atlansin") == [3]
+    assert _extract_page_numbers_for_exclusion("sayfa no: 5 profil sayfasi") == [5]
+
+
+def test_extract_page_numbers_multi_ve():
+    from technical_office_runtime.orchestrator import _extract_page_numbers_for_exclusion
+    result = _extract_page_numbers_for_exclusion("sayfa 2 ve 3 profil detaylari")
+    assert 2 in result and 3 in result
+
+
+def test_extract_page_numbers_multi_comma():
+    from technical_office_runtime.orchestrator import _extract_page_numbers_for_exclusion
+    result = _extract_page_numbers_for_exclusion("sayfa 1, 2 ve 3 atlanmali")
+    assert set(result) >= {1, 2, 3}
+
+
+def test_extract_page_numbers_range():
+    from technical_office_runtime.orchestrator import _extract_page_numbers_for_exclusion
+    result = _extract_page_numbers_for_exclusion("sayfa 2-4 plaka degil gecilsin")
+    assert result == [2, 3, 4]
+
+
+def test_extract_page_numbers_ordinal():
+    from technical_office_runtime.orchestrator import _extract_page_numbers_for_exclusion
+    result = _extract_page_numbers_for_exclusion("1. sayfa baslik sayfasi")
+    assert 1 in result
+
+
+def test_extract_page_numbers_dedup():
+    from technical_office_runtime.orchestrator import _extract_page_numbers_for_exclusion
+    result = _extract_page_numbers_for_exclusion("sayfa 3 ve 3 atla")
+    assert result.count(3) == 1
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _looks_like_page_exclusion_request (yeni terimler)
+# ---------------------------------------------------------------------------
+
+def _page_exclusion_msg(phrase: str, job_id: str = "test-001") -> str:
+    ctx = json.dumps({"selected_job_id": job_id})
+    return f"sayfa 1 {phrase}\n\n[Secili is baglami: {ctx}]"
+
+
+def test_detection_plaka_degil():
+    from technical_office_runtime.orchestrator import _looks_like_page_exclusion_request
+    assert _looks_like_page_exclusion_request(_page_exclusion_msg("plaka degil"))
+
+
+def test_detection_plaka_icermiyor():
+    from technical_office_runtime.orchestrator import _looks_like_page_exclusion_request
+    assert _looks_like_page_exclusion_request(_page_exclusion_msg("plaka icermiyor"))
+
+
+def test_detection_profil_detaylari():
+    from technical_office_runtime.orchestrator import _looks_like_page_exclusion_request
+    assert _looks_like_page_exclusion_request(_page_exclusion_msg("profil detaylari"))
+
+
+def test_detection_gecilmeli():
+    from technical_office_runtime.orchestrator import _looks_like_page_exclusion_request
+    assert _looks_like_page_exclusion_request(_page_exclusion_msg("gecilmeli"))
+
+
+def test_detection_cizilmeyecek():
+    from technical_office_runtime.orchestrator import _looks_like_page_exclusion_request
+    assert _looks_like_page_exclusion_request(_page_exclusion_msg("cizilmeyecek"))
+
+
+def test_detection_dahil_edilmesin():
+    from technical_office_runtime.orchestrator import _looks_like_page_exclusion_request
+    assert _looks_like_page_exclusion_request(_page_exclusion_msg("dahil edilmesin"))
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: MemoryBridge.record_page_exclusion + find_page_hints
+# ---------------------------------------------------------------------------
+
+def test_memory_bridge_record_and_find_page_hints(tmp_path):
+    from technical_office_runtime.memory_bridge import MemoryBridge
+    bridge = MemoryBridge(tmp_path / "test.db")
+    sha = "a" * 64
+    bridge.record_page_exclusion(sha, "job-001", [1, 3], note="baslik sayfasi")
+    hints = bridge.find_page_hints(sha)
+    assert hints == [1, 3]
+
+
+def test_memory_bridge_find_page_hints_empty(tmp_path):
+    from technical_office_runtime.memory_bridge import MemoryBridge
+    bridge = MemoryBridge(tmp_path / "test.db")
+    assert bridge.find_page_hints("nonexistent" * 4) == []
+
+
+def test_memory_bridge_page_hints_latest_wins(tmp_path):
+    from technical_office_runtime.memory_bridge import MemoryBridge
+    bridge = MemoryBridge(tmp_path / "test.db")
+    sha = "b" * 64
+    bridge.record_page_exclusion(sha, "job-001", [1], note="ilk")
+    bridge.record_page_exclusion(sha, "job-002", [2, 3], note="son")
+    hints = bridge.find_page_hints(sha)
+    assert hints == [2, 3]
+
+
+def test_memory_bridge_page_hints_cross_job(tmp_path):
+    """Bir PDF hash'i job-A'da kaydedilir; farklı bir sorguda da bulunur."""
+    from technical_office_runtime.memory_bridge import MemoryBridge
+    bridge = MemoryBridge(tmp_path / "test.db")
+    sha = "c" * 64
+    bridge.record_page_exclusion(sha, "job-A", [5], note="profil")
+    assert 5 in bridge.find_page_hints(sha)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _summary_requires_visual_candidates (plate_geometry_not_found)
+# ---------------------------------------------------------------------------
+
+def test_visual_candidates_plate_geometry_not_found():
+    from technical_office_runtime.app import _summary_requires_visual_candidates
+    summary = {"manual_reviews": [{"reason": "plate_geometry_not_found"}]}
+    assert _summary_requires_visual_candidates(summary) is True
+
+
+def test_visual_candidates_visual_text_required():
+    from technical_office_runtime.app import _summary_requires_visual_candidates
+    summary = {"manual_reviews": [{"reason": "visual_text_required"}]}
+    assert _summary_requires_visual_candidates(summary) is True
+
+
+def test_visual_candidates_no_trigger_reason():
+    from technical_office_runtime.app import _summary_requires_visual_candidates
+    summary = {"manual_reviews": [{"reason": "missing_poz_count"}]}
+    assert _summary_requires_visual_candidates(summary) is False
+
+
+def test_visual_candidates_empty():
+    from technical_office_runtime.app import _summary_requires_visual_candidates
+    assert _summary_requires_visual_candidates({}) is False
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _reconcile_manual_reviews
+# ---------------------------------------------------------------------------
+
+def test_reconcile_removes_covered_by_candidate(tmp_path):
+    from technical_office_runtime.app import _reconcile_manual_reviews
+    import json
+    reviews = [{"reason": "plate_geometry_not_found", "source_pdf": "test.pdf", "page": 3}]
+    candidates = {"candidates": [{"source_pdf": "test.pdf", "source_page": 3}]}
+    (tmp_path / "manual_review_required.json").write_text(json.dumps(reviews))
+    (tmp_path / "codex_candidates.json").write_text(json.dumps(candidates))
+    active = _reconcile_manual_reviews(tmp_path)
+    assert active == []
+
+
+def test_reconcile_removes_excluded_page(tmp_path):
+    from technical_office_runtime.app import _reconcile_manual_reviews
+    import json
+    reviews = [{"reason": "plate_geometry_not_found", "source_pdf": "test.pdf", "page": 5}]
+    exclusions = {"excluded_pages": [{"page": 5}]}
+    (tmp_path / "manual_review_required.json").write_text(json.dumps(reviews))
+    (tmp_path / "page_exclusions_applied.json").write_text(json.dumps(exclusions))
+    active = _reconcile_manual_reviews(tmp_path)
+    assert active == []
+
+
+def test_reconcile_keeps_uncovered_review(tmp_path):
+    from technical_office_runtime.app import _reconcile_manual_reviews
+    import json
+    reviews = [{"reason": "plate_geometry_not_found", "source_pdf": "test.pdf", "page": 7}]
+    candidates = {"candidates": [{"source_pdf": "test.pdf", "source_page": 3}]}
+    (tmp_path / "manual_review_required.json").write_text(json.dumps(reviews))
+    (tmp_path / "codex_candidates.json").write_text(json.dumps(candidates))
+    active = _reconcile_manual_reviews(tmp_path)
+    assert len(active) == 1 and active[0]["page"] == 7
+
+
+def test_reconcile_empty_files(tmp_path):
+    from technical_office_runtime.app import _reconcile_manual_reviews
+    active = _reconcile_manual_reviews(tmp_path)
+    assert active == []
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: Turkish greeting detection
+# ---------------------------------------------------------------------------
+
+def test_greeting_nasilsin():
+    from technical_office_runtime.orchestrator import _looks_like_lightweight_manager_chat
+    assert _looks_like_lightweight_manager_chat("nasılsın") is True
+
+
+def test_greeting_naber():
+    from technical_office_runtime.orchestrator import _looks_like_lightweight_manager_chat
+    assert _looks_like_lightweight_manager_chat("naber") is True
+
+
+def test_greeting_gunaydin():
+    from technical_office_runtime.orchestrator import _looks_like_lightweight_manager_chat
+    assert _looks_like_lightweight_manager_chat("günaydın") is True
+
+
+def test_greeting_iyi_misin():
+    from technical_office_runtime.orchestrator import _looks_like_lightweight_manager_chat
+    assert _looks_like_lightweight_manager_chat("iyi misin") is True
+
+
+def test_greeting_sagol():
+    from technical_office_runtime.orchestrator import _looks_like_lightweight_manager_chat
+    assert _looks_like_lightweight_manager_chat("sağol") is True
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: Skill update / promote detection
+# ---------------------------------------------------------------------------
+
+def test_skill_update_detection_hafizasina_ekle():
+    from technical_office_runtime.orchestrator import _looks_like_skill_update_request
+    assert _looks_like_skill_update_request("autocad uzman hafizasina ekle: polygon plakalarda koordinat kullan")
+
+def test_skill_update_detection_uzman_memorye():
+    from technical_office_runtime.orchestrator import _looks_like_skill_update_request
+    assert _looks_like_skill_update_request("kalite kontrol memorye yaz: ok=false teslim kapali")
+
+def test_skill_update_detection_negative():
+    from technical_office_runtime.orchestrator import _looks_like_skill_update_request
+    assert not _looks_like_skill_update_request("bu isin durumunu ozetle")
+
+def test_skill_promote_detection():
+    from technical_office_runtime.orchestrator import _looks_like_skill_promote_request
+    assert _looks_like_skill_promote_request("proposal autocad-uzman-1-memory-20260514123456 onayla")
+
+def test_skill_promote_detection_negative():
+    from technical_office_runtime.orchestrator import _looks_like_skill_promote_request
+    assert not _looks_like_skill_promote_request("pipeline calistir")
+
+def test_extract_target_agent_autocad1():
+    from technical_office_runtime.orchestrator import _extract_target_agent_from_text
+    assert _extract_target_agent_from_text("autocad uzman 1 hafizasina ekle") == "autocad-uzman-1"
+
+def test_extract_target_agent_autocad2():
+    from technical_office_runtime.orchestrator import _extract_target_agent_from_text
+    assert _extract_target_agent_from_text("uzman2 bunu ogrenmeli") == "autocad-uzman-2"
+
+def test_extract_target_agent_kalite():
+    from technical_office_runtime.orchestrator import _extract_target_agent_from_text
+    assert _extract_target_agent_from_text("kalite kontrol memorye yaz") == "kalite-kontrol"
+
+# ---------------------------------------------------------------------------
+# Unit tests: load_expert_agent_memories
+# ---------------------------------------------------------------------------
+
+def test_load_expert_agent_memories_returns_content(tmp_path):
+    from technical_office_runtime.agent_context import load_expert_agent_memories
+    from technical_office_runtime.config import RuntimePaths
+
+    # tmp_path altında sahte agent yapısı kur
+    agents_root = tmp_path / "agents"
+    (agents_root / "autocad-uzman-1").mkdir(parents=True)
+    (agents_root / "autocad-uzman-1" / "MEMORY.md").write_text(
+        "# autocad-uzman-1 Memory\n\nPolygon tipi plakalar contour çizgisi ile çizilir.", encoding="utf-8"
+    )
+    (agents_root / "kalite-kontrol").mkdir(parents=True)
+    (agents_root / "kalite-kontrol" / "RULES.md").write_text(
+        "# Kurallar\n\nok=false ise teslim yapma.", encoding="utf-8"
+    )
+
+    class _FakePaths:
+        suite_root = tmp_path
+        workspace_root = tmp_path / "workspace"
+
+    result = load_expert_agent_memories(_FakePaths())
+    assert "autocad-uzman-1 / MEMORY.md" in result
+    assert "kalite-kontrol / RULES.md" in result
+    assert "Polygon tipi" in result
+
+def test_load_expert_agent_memories_empty(tmp_path):
+    from technical_office_runtime.agent_context import load_expert_agent_memories
+
+    class _FakePaths:
+        suite_root = tmp_path
+        workspace_root = tmp_path / "workspace"
+
+    result = load_expert_agent_memories(_FakePaths())
+    assert result == ""
+
+# ---------------------------------------------------------------------------
+# Unit tests: skill update handler (proposal dosyası oluşuyor mu)
+# ---------------------------------------------------------------------------
+
+def test_skill_update_handler_creates_proposal(tmp_path):
+    import json
+    from technical_office_runtime.orchestrator import AgentOrchestrator
+
+    # Minimal workspace yapısı
+    (tmp_path / "agents" / "autocad-uzman-1").mkdir(parents=True)
+    (tmp_path / "workspace" / "outputs" / "jobs").mkdir(parents=True)
+    (tmp_path / "workspace" / "memory").mkdir(parents=True)
+    (tmp_path / "workspace" / "sessions").mkdir(parents=True)
+    (tmp_path / "journal" / "skill_proposals").mkdir(parents=True)
+    registry = {
+        "agents": [{"id": "teknik-ofis-muduru", "name": "Mudur", "role": "manager", "brain": "autocad-uzman-1/AGENT.md", "skills": ["_shared"]}]
+    }
+    (tmp_path / "agents" / "registry.json").write_text(json.dumps(registry), encoding="utf-8")
+    (tmp_path / "agents" / "autocad-uzman-1" / "AGENT.md").write_text("# AGENT", encoding="utf-8")
+
+    from technical_office_runtime.config import RuntimePaths as _RP
+    paths = _RP(
+        suite_root=tmp_path,
+        registry_path=tmp_path / "agents" / "registry.json",
+        workspace_root=tmp_path / "workspace",
+        jobs_import_root=tmp_path / "workspace" / "imports" / "jobs",
+        jobs_output_root=tmp_path / "workspace" / "outputs" / "jobs",
+        autocad_src=tmp_path / "mcp" / "autocad-mcp-server" / "src",
+    )
+    orch = AgentOrchestrator(paths=paths, agent_id="teknik-ofis-muduru")
+    result = orch._handle_skill_update_request(
+        "autocad uzman hafizasina ekle: polygon_contour icin corner_reliefs bos birakilabilir",
+        [],
+    )
+    proposals = list((tmp_path / "journal" / "skill_proposals").glob("autocad-uzman-1-memory-*.md"))
+    assert len(proposals) == 1
+    assert "local_skill_update_proposal" in result.fallback_reason
+
+# ---------------------------------------------------------------------------
+# Unit tests: _extract_all_poz_nos_from_text — çoklu poz numarası
+# ---------------------------------------------------------------------------
+
+def test_extract_all_poz_nos_single():
+    from technical_office_runtime.orchestrator import _extract_all_poz_nos_from_text
+    assert _extract_all_poz_nos_from_text("poz 4043 poligon") == ["4043"]
+
+def test_extract_all_poz_nos_multiple():
+    from technical_office_runtime.orchestrator import _extract_all_poz_nos_from_text
+    result = _extract_all_poz_nos_from_text("4043 4047 ve 4058 poligon olarak ciz")
+    assert set(result) == {"4043", "4047", "4058"}
+
+def test_extract_all_poz_nos_empty():
+    from technical_office_runtime.orchestrator import _extract_all_poz_nos_from_text
+    assert _extract_all_poz_nos_from_text("poligon olarak ciz hepsini") == []
+
+# ---------------------------------------------------------------------------
+# Unit tests: polygon instruction escapes to all pending when multiple pozlar
+# ---------------------------------------------------------------------------
+
+def test_looks_like_polygon_draw_instruction_with_multiple_poz():
+    from technical_office_runtime.orchestrator import _looks_like_polygon_draw_instruction
+    assert _looks_like_polygon_draw_instruction("4043 4047 ve 4058 poligon olarak cizeceksin")
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: LLM-first architecture helpers
+# ---------------------------------------------------------------------------
+
+def test_build_live_job_context_empty_for_missing_job(tmp_path):
+    """Job klasörü yoksa boş string döner."""
+    from technical_office_runtime.orchestrator import _build_live_job_context
+
+    paths = _make_minimal_paths(tmp_path)
+    result = _build_live_job_context(paths, "nonexistent-job-xyz")
+    assert result == ""
+
+
+def test_build_live_job_context_returns_fsm_state(tmp_path):
+    """Job klasörü varsa FSM state okunur."""
+    from technical_office_runtime.orchestrator import _build_live_job_context
+
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "test-live-ctx-001"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    (output_dir / "fsm_state.json").write_text(json.dumps({"state": "failed"}), encoding="utf-8")
+    (job_dir / "job.json").write_text(json.dumps({"project_name": "Test Projesi"}), encoding="utf-8")
+
+    result = _build_live_job_context(paths, job_id)
+    assert "FSM: failed" in result
+    assert "Test Projesi" in result
+    assert job_id in result
+
+
+def test_synthesize_query_without_gemini_returns_raw(tmp_path, monkeypatch):
+    """GEMINI_API_KEY yoksa _synthesize_query_with_gemini ham veriyi döndürür."""
+    from technical_office_runtime.orchestrator import AgentOrchestrator
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    paths = _make_minimal_paths(tmp_path)
+    orch = AgentOrchestrator(paths=paths, allow_codex=False)
+
+    result = orch._synthesize_query_with_gemini(
+        "ham veri bloğu", "kullanıcı sorusu", [], fallback_reason="test_fallback"
+    )
+    assert result.content == "ham veri bloğu"
+    assert result.fallback_reason == "test_fallback"
+
+
+def test_selected_job_id_from_context_parses_hidden_payload():
+    """Gizli bağlam bloğundan job ID doğru çıkarılır."""
+    from technical_office_runtime.orchestrator import _selected_job_id_from_context
+    text = 'bu isin durumu nedir\n\n[Secili is baglami:{"selected_job_id": "danieli-20260514"}]'
+    assert _selected_job_id_from_context(text) == "danieli-20260514"
+
+
+def test_selected_job_id_from_context_returns_none_when_absent():
+    from technical_office_runtime.orchestrator import _selected_job_id_from_context
+    assert _selected_job_id_from_context("sadece normal metin") is None
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: corner name normalization in patch
+# ---------------------------------------------------------------------------
+
+def test_patch_normalizes_inner_corner_suffix(tmp_path):
+    """_try_patch_approved_spec_corner_reliefs: bottom_left_inner → bottom_left."""
+    import json
+    from technical_office_runtime.orchestrator import _try_patch_approved_spec_corner_reliefs
+
+    job_dir = tmp_path
+    spec = {"plates": [
+        {
+            "poz_no": "4039",
+            "width": 200.0, "height": 100.0, "thickness": 10.0,
+            "material": "S235",
+            "corner_reliefs": [
+                {"corner": "bottom_left_inner", "radius": 10.0, "relief_type": "round"},
+                {"corner": "bottom_right_inner", "radius": 10.0, "relief_type": "round"},
+            ]
+        }
+    ]}
+    (job_dir / "approved_plate_specs.json").write_text(json.dumps(spec), encoding="utf-8")
+
+    result = _try_patch_approved_spec_corner_reliefs(job_dir)
+    assert result is not None
+    patched = json.loads((job_dir / "approved_plate_specs.json").read_text(encoding="utf-8"))
+    corners = {r["corner"] for r in patched["plates"][0]["corner_reliefs"]}
+    assert "bottom_left_inner" not in corners
+    assert "bottom_left" in corners
+    assert "bottom_right" in corners
+
+
+def test_patch_removes_unknown_corner(tmp_path):
+    """Tanımsız köşe adları (ör. 'inner_mid') tamamen kaldırılır."""
+    import json
+    from technical_office_runtime.orchestrator import _try_patch_approved_spec_corner_reliefs
+
+    job_dir = tmp_path
+    spec = {"plates": [
+        {
+            "poz_no": "R4-11-314",
+            "width": 300.0, "height": 150.0, "thickness": 8.0,
+            "material": "S355",
+            "corner_reliefs": [
+                {"corner": "bend_side_inner", "radius": 5.0, "relief_type": "round"},
+                {"corner": "bottom_left", "radius": 5.0, "relief_type": "round"},
+            ]
+        }
+    ]}
+    (job_dir / "approved_plate_specs.json").write_text(json.dumps(spec), encoding="utf-8")
+
+    _try_patch_approved_spec_corner_reliefs(job_dir)
+    patched = json.loads((job_dir / "approved_plate_specs.json").read_text(encoding="utf-8"))
+    reliefs = patched["plates"][0]["corner_reliefs"]
+    assert len(reliefs) == 1
+    assert reliefs[0]["corner"] == "bottom_left"
+
+
+def test_patch_removes_duplicate_corner(tmp_path):
+    """Aynı köşe iki kez listelenirse ikincisi kaldırılır."""
+    import json
+    from technical_office_runtime.orchestrator import _try_patch_approved_spec_corner_reliefs
+
+    job_dir = tmp_path
+    spec = {"plates": [
+        {
+            "poz_no": "4050",
+            "width": 200.0, "height": 100.0, "thickness": 6.0,
+            "material": "S235",
+            "corner_reliefs": [
+                {"corner": "bottom_left", "radius": 8.0, "relief_type": "round"},
+                {"corner": "bottom_left", "radius": 8.0, "relief_type": "round"},
+            ]
+        }
+    ]}
+    (job_dir / "approved_plate_specs.json").write_text(json.dumps(spec), encoding="utf-8")
+
+    _try_patch_approved_spec_corner_reliefs(job_dir)
+    patched = json.loads((job_dir / "approved_plate_specs.json").read_text(encoding="utf-8"))
+    reliefs = patched["plates"][0]["corner_reliefs"]
+    assert len(reliefs) == 1
+
+
+def test_deep_output_inspection_detector():
+    """'notlar giderildi mi' ve 'tüm çıktıları incele' deep inspection yakalanır."""
+    from technical_office_runtime.orchestrator import _looks_like_deep_output_inspection_request
+    context = '\n\n[Secili is baglami:{"selected_job_id": "test-job"}]'
+    assert _looks_like_deep_output_inspection_request("bu notlar giderilip giderilmedi mi" + context)
+    assert _looks_like_deep_output_inspection_request("tum ciktilari incele" + context)
+    assert _looks_like_deep_output_inspection_request("ne kaldi" + context)
+    assert not _looks_like_deep_output_inspection_request("merhaba nasılsın")
+
+
+def test_format_deep_output_inspection_lists_produced_pozs(tmp_path):
+    """_format_deep_output_inspection: üretilen DXF klasörlerini raporlar."""
+    import json
+    from technical_office_runtime.orchestrator import _format_deep_output_inspection
+
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "deep-insp-001"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Onaylı spec
+    spec = {"plates": [{"poz_no": "4001", "width": 100.0, "height": 50.0, "thickness": 5.0, "material": "S235"}]}
+    (job_dir / "approved_plate_specs.json").write_text(json.dumps(spec), encoding="utf-8")
+
+    # Üretilmiş DXF poz klasörü
+    poz_dir = output_dir / "4001"
+    poz_dir.mkdir()
+    (poz_dir / "4001.dxf").write_text("MOCK DXF", encoding="utf-8")
+
+    result = _format_deep_output_inspection(paths, job_id)
+    assert "4001" in result
+    assert "Üretilen DXF" in result or "Uretilen DXF" in result

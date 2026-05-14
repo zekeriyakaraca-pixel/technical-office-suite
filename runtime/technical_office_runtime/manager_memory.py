@@ -5,11 +5,12 @@ import json
 import re
 import sqlite3
 import time
-import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from .text_normalization import normalize_search_text, repair_text
 
 
 _JOB_ID_RE = re.compile(r"\b[A-Za-z]+-[0-9][A-Za-z0-9_.-]*\b")
@@ -118,8 +119,15 @@ class ManagerMemory:
         user_text: str,
         assistant_text: str,
         selected_job_id: str | None = None,
+        history: list[dict[str, Any]] | None = None,
     ) -> None:
-        user_context = extract_memory_context(user_text, selected_job_id=selected_job_id)
+        user_text = repair_text(user_text)
+        assistant_text = repair_text(assistant_text)
+        initial_context = extract_memory_context(user_text, selected_job_id=selected_job_id)
+        fallback_job_id = selected_job_id
+        if not initial_context.job_ids:
+            fallback_job_id = _job_id_from_history(history or []) or self.recent_job_id(session_id)
+        user_context = initial_context if initial_context.job_ids else extract_memory_context(user_text, selected_job_id=fallback_job_id)
         assistant_context = extract_memory_context(assistant_text, selected_job_id=user_context.primary_job_id)
         if _looks_like_generic_job_listing(assistant_text):
             assistant_context = ExtractedMemoryContext(job_ids=[], poz_nos=[], pdf_names=[], tags=[])
@@ -155,7 +163,9 @@ class ManagerMemory:
             job_id = self.recent_job_id(session_id)
 
         facts = self.list_facts(job_id, limit=fact_limit) if job_id else []
-        events = self.recent_events(session_id=session_id, job_id=job_id, limit=event_limit)
+        events = self.recent_events(session_id=session_id, limit=event_limit)
+        if job_id:
+            events = _merge_events(events, self.recent_events(job_id=job_id, limit=event_limit), limit=event_limit)
         return ManagerMemoryRecall(primary_job_id=job_id, facts=facts, recent_events=events)
 
     def recent_job_id(self, session_id: str) -> str | None:
@@ -271,6 +281,49 @@ class ManagerMemory:
         target.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return target
 
+    def cleanup_guided_flow_noise(
+        self,
+        *,
+        job_id: str,
+        session_id: str,
+    ) -> dict[str, int]:
+        fact_patterns = (
+            "%Kose bilgisini anlayamadim%",
+            "%Mudur, secili is icin aday onayi kose bosaltma bilgisi eksik%",
+            "%hangi parcalar icin soruyorsun%",
+            "%hangi pozlar icin soruyorsun%",
+            "%hangi kose bilgisini anlamadin%",
+        )
+        event_patterns = (
+            "%Mudur, secili is icin aday onayi kose bosaltma bilgisi eksik%",
+        )
+        with self._connect() as conn:
+            facts_removed = 0
+            for pattern in fact_patterns:
+                cursor = conn.execute(
+                    """
+                    DELETE FROM manager_facts
+                    WHERE job_id = ?
+                      AND fact_type = 'issue'
+                      AND content LIKE ?
+                    """,
+                    (job_id, pattern),
+                )
+                facts_removed += max(cursor.rowcount or 0, 0)
+            events_removed = 0
+            for pattern in event_patterns:
+                cursor = conn.execute(
+                    """
+                    DELETE FROM conversation_events
+                    WHERE session_id = ?
+                      AND content LIKE ?
+                    """,
+                    (session_id, pattern),
+                )
+                events_removed += max(cursor.rowcount or 0, 0)
+        self.export_job_markdown(job_id)
+        return {"facts_removed": facts_removed, "events_removed": events_removed}
+
     def _insert_event(
         self,
         conn: sqlite3.Connection,
@@ -340,7 +393,7 @@ class ExtractedMemoryContext:
 
 
 def extract_memory_context(text: str, *, selected_job_id: str | None = None) -> ExtractedMemoryContext:
-    visible = _visible_text(text)
+    visible = repair_text(_visible_text(text))
     job_ids = _unique([selected_job_id] if selected_job_id else [])
     job_ids = _unique(job_ids + _JOB_ID_RE.findall(visible))
     pdf_names = _unique([match.strip(" .,;:") for match in _PDF_RE.findall(visible)])
@@ -363,7 +416,10 @@ _manager_memory_instances: dict[str, ManagerMemory] = {}
 def _facts_from_message(role: str, content: str, context: ExtractedMemoryContext) -> list[dict[str, Any]]:
     if not context.job_ids:
         return []
-    lower = _normalize_turkish(_visible_text(content))
+    visible = repair_text(_visible_text(content))
+    if _looks_like_guided_flow_noise(visible):
+        return []
+    lower = _normalize_turkish(visible)
     fact_type: str | None = None
     status = "open"
     confidence = 0.72
@@ -391,7 +447,7 @@ def _facts_from_message(role: str, content: str, context: ExtractedMemoryContext
         {
             "job_id": job_id,
             "fact_type": fact_type,
-            "content": _visible_text(content),
+            "content": visible,
             "status": status,
             "confidence": confidence,
             "source": "teknik-ofis-muduru-chat",
@@ -497,7 +553,7 @@ def _visible_text(text: str) -> str:
         idx = text.find(marker)
         if idx >= 0:
             cut = min(cut, idx)
-    return text[:cut].strip()
+    return repair_text(text[:cut].strip())
 
 
 def _loads_list(value: str) -> list[str]:
@@ -508,6 +564,24 @@ def _loads_list(value: str) -> list[str]:
     if not isinstance(parsed, list):
         return []
     return [str(item) for item in parsed if item is not None]
+
+
+def _merge_events(primary: list[dict[str, Any]], secondary: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str, str, str]] = set()
+    merged: list[dict[str, Any]] = []
+    for event in primary + secondary:
+        key = (
+            str(event.get("session_id") or ""),
+            str(event.get("role") or ""),
+            str(event.get("created_at") or ""),
+            str(event.get("content") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(event)
+    merged.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+    return merged[: max(1, min(limit, 200))]
 
 
 def _unique(values: list[str | None]) -> list[str]:
@@ -525,26 +599,21 @@ def _unique(values: list[str | None]) -> list[str]:
 
 
 def _normalize_turkish(text: str) -> str:
-    lowered = text.lower().translate(
-        str.maketrans(
-            {
-                "\u0131": "i",
-                "\u0130": "i",
-                "\u011f": "g",
-                "\u011e": "g",
-                "\u00fc": "u",
-                "\u00dc": "u",
-                "\u015f": "s",
-                "\u015e": "s",
-                "\u00f6": "o",
-                "\u00d6": "o",
-                "\u00e7": "c",
-                "\u00c7": "c",
-            }
+    return normalize_search_text(text)
+
+
+def _looks_like_guided_flow_noise(content: str) -> bool:
+    lower = _normalize_turkish(content)
+    return any(
+        phrase in lower
+        for phrase in (
+            "mudur, secili is icin aday onayi kose bosaltma bilgisi eksik oldugu icin durdu",
+            "kose bilgisini anlayamadim",
+            "hangi parcalar icin soruyorsun",
+            "hangi pozlar icin soruyorsun",
+            "hangi kose bilgisini anlamadin",
         )
     )
-    normalized = unicodedata.normalize("NFKD", lowered)
-    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
 
 
 def _safe_filename(value: str) -> str:

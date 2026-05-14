@@ -1,0 +1,983 @@
+{
+  "approved_by": "teknik-ofis-muduru",
+  "approved_at": "2026-05-14T11:53:41.690686+03:00",
+  "plates": [
+    {
+      "candidate_id": "manager_pdf_scan-1",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 4,
+      "poz_no": "4023",
+      "width": 536.5,
+      "height": 223,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 6,
+      "holes": [
+        {
+          "x": 300,
+          "y": 75,
+          "diameter": 25.5
+        },
+        {
+          "x": 364,
+          "y": 103.5,
+          "diameter": 25.5
+        },
+        {
+          "x": 428,
+          "y": 132,
+          "diameter": 25.5
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_left",
+          "radius": 10,
+          "relief_type": "chamfer"
+        },
+        {
+          "corner": "bottom_right",
+          "radius": 90.5,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.78,
+      "evidence": "Page 4 title block: mark 4023, PL10*223, S355JR, QTY 6, length 536.5. Front view shows 3*D25.5; hole chain dimensions 64/64/70 and vertical 75/28.5/28.5/90.5.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-2",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 5,
+      "poz_no": "4024",
+      "width": 370,
+      "height": 230,
+      "thickness": 20,
+      "material": "S355JR",
+      "quantity": 2,
+      "holes": [
+        {
+          "x": 40,
+          "y": 55,
+          "diameter": 21
+        },
+        {
+          "x": 140,
+          "y": 55,
+          "diameter": 21
+        },
+        {
+          "x": 230,
+          "y": 55,
+          "diameter": 21
+        },
+        {
+          "x": 330,
+          "y": 55,
+          "diameter": 21
+        },
+        {
+          "x": 40,
+          "y": 175,
+          "diameter": 21
+        },
+        {
+          "x": 140,
+          "y": 175,
+          "diameter": 21
+        },
+        {
+          "x": 230,
+          "y": 175,
+          "diameter": 21
+        },
+        {
+          "x": 330,
+          "y": 175,
+          "diameter": 21
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "contour_type": "rectangle",
+      "confidence": 0.94,
+      "evidence": "Page 5 title block: 4024, PL20*230, QTY 2, length 370. Front view dimensions 370 x 230; 8*D21 with horizontal 40-100-90-100-40 and vertical 55-120-55.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-3",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 6,
+      "poz_no": "4026",
+      "width": 450,
+      "height": 450,
+      "thickness": 30,
+      "material": "S355J0",
+      "quantity": 6,
+      "holes": [
+        {
+          "x": 60,
+          "y": 60,
+          "diameter": 40
+        },
+        {
+          "x": 390,
+          "y": 60,
+          "diameter": 40
+        },
+        {
+          "x": 60,
+          "y": 390,
+          "diameter": 40
+        },
+        {
+          "x": 390,
+          "y": 390,
+          "diameter": 40
+        },
+        {
+          "x": 195,
+          "y": 185,
+          "diameter": 14
+        },
+        {
+          "x": 255,
+          "y": 265,
+          "diameter": 14
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "contour_type": "rectangle",
+      "confidence": 0.91,
+      "evidence": "Page 6 title block: 4026, PL30*450, S355J0, QTY 6, length 450. Front view 450 x 450; 4*D40 at 60 offsets and 2*D14 with bottom chain 195-60-195 and right vertical chain 185-80-185.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-4",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 7,
+      "poz_no": "4027",
+      "width": 200,
+      "height": 200,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 2,
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 20,
+          "relief_type": "chamfer"
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 10,
+          "relief_type": "chamfer"
+        },
+        {
+          "corner": "bottom_right",
+          "radius": 20,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.86,
+      "evidence": "Page 7 title block: 4027, PL10*200, QTY 2, length 200. Front view shows 200 x 200 outline with diagonal cut, 20 mm top-left step, 10 mm bottom-left chamfer, and 20 mm bottom-right chamfer.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-5",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 8,
+      "poz_no": "4028",
+      "width": 200,
+      "height": 110,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 6,
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_right",
+          "radius": 10,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.88,
+      "evidence": "Page 8 title block: 4028, PL10*110, QTY 6, length 200. Front view shows 200 x 110 outline, sloped upper edge, 20 mm top-right flat, and 10 mm bottom-right chamfer.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-6",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 9,
+      "poz_no": "4029",
+      "width": 330,
+      "height": 303,
+      "thickness": 20,
+      "material": "S355JR",
+      "quantity": 2,
+      "holes": [
+        {
+          "x": 193,
+          "y": 178.5,
+          "diameter": 21
+        },
+        {
+          "x": 235.5,
+          "y": 221,
+          "diameter": 21
+        },
+        {
+          "x": 278,
+          "y": 178.5,
+          "diameter": 21
+        },
+        {
+          "x": 235.5,
+          "y": 136,
+          "diameter": 21
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_left",
+          "radius": 10,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.72,
+      "evidence": "Page 9 title block: 4029, PL20*303, QTY 2, length 330. Front view has 4*D21 diamond pattern with 60 mm diagonal spacings; outer contour is irregular with bottom-left 10 mm chamfer.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-7",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 10,
+      "poz_no": "4031",
+      "width": 654.5,
+      "height": 223,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 6,
+      "holes": [
+        {
+          "x": 391.5,
+          "y": 75,
+          "diameter": 25.5
+        },
+        {
+          "x": 455.5,
+          "y": 103.5,
+          "diameter": 25.5
+        },
+        {
+          "x": 519.5,
+          "y": 132,
+          "diameter": 25.5
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_left",
+          "radius": 10,
+          "relief_type": "chamfer"
+        },
+        {
+          "corner": "bottom_right",
+          "radius": 90.5,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.78,
+      "evidence": "Page 10 title block: 4031, PL10*223, QTY 6, length 654.5. Front view shows 3*D25.5; bottom dimensions 10, 530, 114.5 and hole chain 64/64/70.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-8",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 11,
+      "poz_no": "4032",
+      "width": 240,
+      "height": 200,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 4,
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_right",
+          "radius": 10,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.86,
+      "evidence": "Page 11 title block: 4032, PL10*200, QTY 4, length 240. Front view shows 240 x 200 plate with diagonal face, 20 mm top-right flat, and 10 mm bottom-right chamfer.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-9",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 12,
+      "poz_no": "4035",
+      "width": 309.5,
+      "height": 344,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 4,
+      "holes": [
+        {
+          "x": 62.5,
+          "y": 223,
+          "diameter": 21
+        },
+        {
+          "x": 92.5,
+          "y": 170.5,
+          "diameter": 21
+        },
+        {
+          "x": 162.5,
+          "y": 275.5,
+          "diameter": 21
+        },
+        {
+          "x": 192.5,
+          "y": 223,
+          "diameter": 21
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_right",
+          "radius": 10,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.68,
+      "evidence": "Page 12 title block: 4035, PL10*344, QTY 4, length 309.5. Front view has 4*D21 oblique bolt group, dimensions 120 and 60 on angled grid; outer contour is irregular.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-10",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 13,
+      "poz_no": "4036",
+      "width": 319.5,
+      "height": 344,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 4,
+      "holes": [
+        {
+          "x": 130,
+          "y": 245.5,
+          "diameter": 21
+        },
+        {
+          "x": 100,
+          "y": 193,
+          "diameter": 21
+        },
+        {
+          "x": 200,
+          "y": 193,
+          "diameter": 21
+        },
+        {
+          "x": 170,
+          "y": 140.5,
+          "diameter": 21
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_left",
+          "radius": 10,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.68,
+      "evidence": "Page 13 title block: 4036, PL10*344, QTY 4, length 319.5. Front view has 4*D21 on angled 120/60 grid and irregular polygon outline with 10 mm bottom-left chamfer.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-11",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 14,
+      "poz_no": "4037",
+      "width": 250,
+      "height": 140,
+      "thickness": 15,
+      "material": "S355JR",
+      "quantity": 12,
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_right",
+          "radius": 15,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "chamfered",
+      "confidence": 0.86,
+      "evidence": "Page 14 title block: 4037, PL15*140, QTY 12, length 250. Top view notes chamfer dimensions according to manufacturer WPS; front view is 250 x 140.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-12",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 15,
+      "poz_no": "4038",
+      "width": 250,
+      "height": 110,
+      "thickness": 15,
+      "material": "S355JR",
+      "quantity": 6,
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_right",
+          "radius": 20,
+          "relief_type": "round"
+        },
+        {
+          "corner": "bottom_right",
+          "radius": 20,
+          "relief_type": "round"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.89,
+      "evidence": "Page 15 title block: 4038, PL15*110, QTY 6, length 250. Front view shows 230+20 length, height 110, and two R20 right-side reliefs.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-13",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 16,
+      "poz_no": "4039",
+      "width": 370,
+      "height": 315,
+      "thickness": 20,
+      "material": "S355JR",
+      "quantity": 4,
+      "holes": [
+        {
+          "x": 40,
+          "y": 220,
+          "diameter": 21
+        },
+        {
+          "x": 140,
+          "y": 220,
+          "diameter": 21
+        },
+        {
+          "x": 230,
+          "y": 220,
+          "diameter": 21
+        },
+        {
+          "x": 330,
+          "y": 220,
+          "diameter": 21
+        },
+        {
+          "x": 40,
+          "y": 100,
+          "diameter": 21
+        },
+        {
+          "x": 140,
+          "y": 100,
+          "diameter": 21
+        },
+        {
+          "x": 230,
+          "y": 100,
+          "diameter": 21
+        },
+        {
+          "x": 330,
+          "y": 100,
+          "diameter": 21
+        },
+        {
+          "x": 190,
+          "y": 35,
+          "diameter": 21
+        },
+        {
+          "x": 270,
+          "y": 35,
+          "diameter": 21
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_left_inner",
+          "radius": 20,
+          "relief_type": "round"
+        },
+        {
+          "corner": "bottom_right_inner",
+          "radius": 20,
+          "relief_type": "round"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.86,
+      "evidence": "Page 16 title block: 4039, PL20*315, QTY 4, length 370. Front view shows 10*D21, horizontal chain 40-100-90-100-40, vertical dimensions 55/120/100/40 and two R20 inner reliefs.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-14",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 17,
+      "poz_no": "4042",
+      "width": 156.5,
+      "height": 175,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 2,
+      "holes": [
+        {
+          "x": 80.5,
+          "y": 89.5,
+          "diameter": 17
+        },
+        {
+          "x": 109.5,
+          "y": 134.5,
+          "diameter": 17
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_left",
+          "radius": 10,
+          "relief_type": "chamfer"
+        },
+        {
+          "corner": "bottom_right",
+          "radius": 10,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.74,
+      "evidence": "Page 17 title block: 4042, PL10*175, QTY 2, length 156.5. Front view shows 2*D17 with 45 spacing and irregular contour; bottom corners have 10/10.5 mm chamfers.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-15",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 18,
+      "poz_no": "4043",
+      "width": 151.5,
+      "height": 126,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 2,
+      "holes": [
+        {
+          "x": 93.5,
+          "y": 72,
+          "diameter": 17
+        },
+        {
+          "x": 93.5,
+          "y": 27,
+          "diameter": 17
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "contour_type": "polygon",
+      "confidence": 0.74,
+      "evidence": "Page 18 title block: 4043, PL10*126, QTY 2, length 151.5. Front view shows 2*D17 vertical pair with 45 mm spacing and irregular tapered contour.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-16",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 19,
+      "poz_no": "4047",
+      "width": 357.5,
+      "height": 135,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 2,
+      "holes": [
+        {
+          "x": 105,
+          "y": 74.5,
+          "diameter": 17
+        },
+        {
+          "x": 143,
+          "y": 50.5,
+          "diameter": 17
+        },
+        {
+          "x": 270.5,
+          "y": 75,
+          "diameter": 17
+        },
+        {
+          "x": 270.5,
+          "y": 30,
+          "diameter": 17
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "contour_type": "polygon",
+      "confidence": 0.76,
+      "evidence": "Page 19 title block: 4047, PL10*135, QTY 2, length 357.5. Front view shows two 2*D17 groups, one angled 45 mm pair and one vertical 45 mm pair.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-17",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 20,
+      "poz_no": "4055",
+      "width": 150,
+      "height": 85,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 6,
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_right",
+          "radius": 10,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.87,
+      "evidence": "Page 20 title block: 4055, PL10*85, QTY 6, length 150. Front view shows sloped upper edge, 20 mm top-right flat, 10 mm bottom-right chamfer.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-18",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 21,
+      "poz_no": "4058",
+      "width": 345,
+      "height": 150.5,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 2,
+      "holes": [
+        {
+          "x": 92,
+          "y": 90,
+          "diameter": 17
+        },
+        {
+          "x": 130,
+          "y": 66,
+          "diameter": 17
+        },
+        {
+          "x": 257.5,
+          "y": 85.5,
+          "diameter": 17
+        },
+        {
+          "x": 257.5,
+          "y": 40.5,
+          "diameter": 17
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "contour_type": "polygon",
+      "confidence": 0.75,
+      "evidence": "Page 21 title block: 4058, PL10*150, QTY 2, length 345. Front view shows two 2*D17 groups and polygon outline; bottom dimension 345 and right overall height 150.5.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-19",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 22,
+      "poz_no": "4061",
+      "width": 320,
+      "height": 200,
+      "thickness": 20,
+      "material": "S355JR",
+      "quantity": 2,
+      "holes": [
+        {
+          "x": 110,
+          "y": 141.5,
+          "diameter": 21
+        },
+        {
+          "x": 210,
+          "y": 141.5,
+          "diameter": 21
+        },
+        {
+          "x": 110,
+          "y": 41.5,
+          "diameter": 21
+        },
+        {
+          "x": 210,
+          "y": 41.5,
+          "diameter": 21
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "contour_type": "rectangle",
+      "confidence": 0.93,
+      "evidence": "Page 22 title block: 4061, PL20*200, QTY 2, length 320. Front view 320 x 200 with 4*D21; horizontal 110-100-110 and vertical 58-100-41.5.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-20",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 23,
+      "poz_no": "4063",
+      "width": 168,
+      "height": 95,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 8,
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_left",
+          "radius": 20,
+          "relief_type": "chamfer"
+        },
+        {
+          "corner": "bottom_right",
+          "radius": 20,
+          "relief_type": "chamfer"
+        }
+      ],
+      "contour_type": "chamfered",
+      "confidence": 0.9,
+      "evidence": "Page 23 title block: 4063, PL10*95, QTY 8, length 168. Front view shows 168 width, 95 vertical to top, and 20 mm chamfers at both lower corners.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-21",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 29,
+      "poz_no": "R4-11-311",
+      "width": 120,
+      "height": 120,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 3,
+      "holes": [
+        {
+          "x": 60,
+          "y": 60,
+          "diameter": 21
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "contour_type": "rectangle",
+      "confidence": 0.94,
+      "evidence": "Page 29 title block: R4-11-311, PL10*120, QTY 3, length 120. Front view 120 x 120 with central 1*D21 hole at 60/60.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-22",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 30,
+      "poz_no": "R4-11-312",
+      "width": 200,
+      "height": 200,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 2,
+      "holes": [
+        {
+          "x": 100,
+          "y": 100,
+          "diameter": 21
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "contour_type": "rectangle",
+      "confidence": 0.94,
+      "evidence": "Page 30 title block: R4-11-312, PL10*200, QTY 2, length 200. Front view 200 x 200 with central 1*D21 hole at 100/100.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-23",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 31,
+      "poz_no": "R4-11-313",
+      "width": 80,
+      "height": 80,
+      "thickness": 10,
+      "material": "S355JR",
+      "quantity": 5,
+      "holes": [
+        {
+          "x": 40,
+          "y": 40,
+          "diameter": 17
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "contour_type": "rectangle",
+      "confidence": 0.94,
+      "evidence": "Page 31 title block: R4-11-313, PL10*80, QTY 5, length 80. Front view 80 x 80 with central 1*D17 hole at 40/40.",
+      "approval_required": true,
+      "validation_errors": []
+    },
+    {
+      "candidate_id": "manager_pdf_scan-24",
+      "provider": "manager_pdf_scan",
+      "source_pdf": "DPCAL7-XA00-B0911-XD450_001_00.pdf",
+      "source_page": 32,
+      "poz_no": "R4-11-314",
+      "width": 340,
+      "height": 50,
+      "thickness": 5,
+      "material": "S355JR",
+      "quantity": 6,
+      "holes": [
+        {
+          "x": 25,
+          "y": 25,
+          "diameter": 13
+        },
+        {
+          "x": 70,
+          "y": 25,
+          "diameter": 11
+        },
+        {
+          "x": 110,
+          "y": 25,
+          "diameter": 11
+        },
+        {
+          "x": 150,
+          "y": 25,
+          "diameter": 11
+        },
+        {
+          "x": 190,
+          "y": 25,
+          "diameter": 11
+        },
+        {
+          "x": 230,
+          "y": 25,
+          "diameter": 11
+        },
+        {
+          "x": 270,
+          "y": 25,
+          "diameter": 11
+        },
+        {
+          "x": 315,
+          "y": 25,
+          "diameter": 13
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 50,
+          "relief_type": "round"
+        },
+        {
+          "corner": "top_right",
+          "radius": 50,
+          "relief_type": "round"
+        }
+      ],
+      "contour_type": "polygon",
+      "confidence": 0.82,
+      "evidence": "Page 32 title block: R4-11-314, PL50*5, QTY 6, length 430. Front view flat length 340 with 6*D11 and 2*D13; top view shows 50 mm upstand/offset both ends and 240 mm middle.",
+      "approval_required": true,
+      "validation_errors": []
+    }
+  ]
+}

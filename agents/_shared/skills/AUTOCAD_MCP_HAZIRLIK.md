@@ -33,6 +33,19 @@ Yeni AutoCAD/DXF isi baslamadan once AutoCAD'in ve MCP File IPC dispatcher'in ca
 - `autocad_mcp.autocad_ready.ensure_autocad_ready_async`
 - `autocad_mcp.technical_office.autocad_live.run_autocad_live_validation`
 
+## Mevcut MCP Araclari (ezdxf backend)
+
+| Arac | Yeni / Guncellenen Operasyonlar |
+|---|---|
+| `drawing` | `list_layouts`, `get_extents` |
+| `entity` | `create_spline`, `query` (tip/katman/bbox filtre), `set_properties`, `erase_many`, `explode`, `offset` (LINE/CIRCLE) |
+| `layer` | `delete` (layer "0" korumalı) |
+| `annotation` | `create_mleader` (leader + mtext cifti) |
+
+Bu operasyonlar dogrudan `autocad-mcp` MCP araci uzerinden cagrilabilir.
+`entity.query` ile `bbox: [xmin, ymin, xmax, ymax]` filtresi kullanilarak
+belirli bir alan icindeki entity'ler sorgulanabilir.
+
 ## Integration
 - `IS_DAGITIMI.md` oncesinde calisir.
 - `CIZIM_NC_KALITE_KONTROLU.md` canli AutoCAD durumunu QC raporuna yazar.

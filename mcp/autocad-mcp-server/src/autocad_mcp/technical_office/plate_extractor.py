@@ -20,6 +20,35 @@ class PlateExtractionResult:
 
 POZ_RE = re.compile(r"\b(?:POZ|POS|MARK)\s*[:#-]?\s*([A-Za-z0-9_.-]+)\b", re.I)
 TITLE_BLOCK_POZ_RE = re.compile(r"\bScale\s*\n\s*([A-Za-z0-9_.-]{3,})\s*\n\s*Object\b", re.I)
+MARK_COLUMN_ROW_RE = re.compile(
+    r"(?P<mark>[A-Za-z0-9_.-]{2,})\s*\n\s*"
+    r"(?P<profile>(?:PL|L|HEA|HEB|HEM|IPE|IPN|UPN|UPE|RHS|SHS|CHS)[A-Za-z0-9*_.-]*)\s*\n\s*"
+    r"(?P<material>[A-Z][A-Z0-9_.-]{2,})\s*\n"
+    r"(?:\s*[0-9]+(?:[.,][0-9]*)?\s*\n){1,8}"
+    r".*?\bMARK\s*\n\s*PROFILE\s*\n\s*MATERIAL\b",
+    re.I | re.S,
+)
+
+# Words that look like poz numbers but are actually table/drawing headers.
+POZ_BLOCKLIST = frozenset({
+    "PROFILE", "PROFIL", "SECTION", "KESIT", "TOTAL", "TOPLAM",
+    "ITIONS", "POSITIONS", "SCALE", "WEIGHT", "AGIRLIK",
+    "DRAWING", "REVISION", "SHEET", "DATE", "DESCRIPTION",
+    "TITLE", "NOTES", "NOTE", "FINISH", "TOLERANCE", "WELDING",
+    "WELD", "DIMENSIONS", "SURFACE", "GENERAL", "ASSEMBLY",
+    "MONTAJ", "TAKIM", "DETAIL", "DETAY", "PART", "ITEM",
+    "MM", "CM", "KG", "NO", "NR", "REF", "TYP", "TYPE",
+})
+
+# Explicit markers that a page contains a cut plate drawing.
+PLATE_INDICATOR_RE = re.compile(r"\bPL\s*\d|\b(?:PLAKA|PLATE)\b", re.I)
+
+# Steel profile shapes and structural section keywords.
+PROFILE_SECTION_RE = re.compile(
+    r"\b(?:HEA|HEB|HEM|HEY|IPE|IPN|UPN|UPE|UNP|CHS|RHS|SHS|"
+    r"PROFILE|PROFIL|KESIT|SECTION)\b",
+    re.I,
+)
 DIM_RE = re.compile(
     r"\b(?:PLAKA|PLATE|PL)?\s*([0-9]+(?:[.,][0-9]+)?)\s*[xX*]\s*"
     r"([0-9]+(?:[.,][0-9]+)?)(?:\s*[xX*]\s*([0-9]+(?:[.,][0-9]+)?))?\b",
@@ -104,6 +133,9 @@ def build_plate_specs(
     for page in extraction.pages:
         poz_numbers = _find_poz_numbers(page.text)
         if not poz_numbers:
+            if _is_non_plate_page(page.text, page):
+                # Page has no plate indicators (profile/section/cover page) — skip silently.
+                continue
             manual_reviews.append(
                 ManualReview(
                     reason="poz_no_not_found",
@@ -947,9 +979,17 @@ def _snap_vector_dimension(value: float) -> float:
 def _find_poz_numbers(text: str) -> list[str]:
     found: list[str] = []
     for match in POZ_RE.finditer(text):
-        found.append(match.group(1))
+        candidate = match.group(1)
+        if _is_valid_poz_candidate(candidate):
+            found.append(candidate)
     for match in TITLE_BLOCK_POZ_RE.finditer(text):
-        found.append(match.group(1))
+        candidate = match.group(1)
+        if _is_valid_poz_candidate(candidate):
+            found.append(candidate)
+    for match in MARK_COLUMN_ROW_RE.finditer(text):
+        candidate = match.group("mark")
+        if _is_valid_poz_candidate(candidate):
+            found.append(candidate)
     table = PLATE_TABLE_RE.search(text)
     if table:
         found.append(table.group("poz"))
@@ -957,6 +997,31 @@ def _find_poz_numbers(text: str) -> list[str]:
     if compact_table:
         found.append(compact_table.group("poz"))
     return list(dict.fromkeys(found))
+
+
+def _is_valid_poz_candidate(value: str) -> bool:
+    """Return False for common table headers, single characters, and blocklisted words."""
+    if value.upper() in POZ_BLOCKLIST:
+        return False
+    # Single characters are never poz numbers (e.g. "S" from "POS S").
+    if len(value) < 2:
+        return False
+    return True
+
+
+def _is_non_plate_page(text: str, page: PdfPageContent) -> bool:
+    """Return True when a page can be safely skipped without raising a manual review.
+
+    A page qualifies when it has no explicit plate markers AND either carries
+    explicit profile/section keywords or has no vector geometry at all.
+    """
+    if PLATE_INDICATOR_RE.search(text):
+        return False  # Explicit plate content → must not skip
+    if PROFILE_SECTION_RE.search(text):
+        return True   # Structural profile/section drawing → not a cut plate
+    if page.vector_operator_count == 0:
+        return True   # No geometry at all → title/index/cover page
+    return False
 
 
 def _has_hole_callout(text: str) -> bool:

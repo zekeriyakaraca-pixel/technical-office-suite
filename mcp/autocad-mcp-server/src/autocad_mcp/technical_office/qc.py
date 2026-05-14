@@ -9,6 +9,7 @@ from typing import Any
 import ezdxf
 
 from autocad_mcp.technical_office.models import PlateSpec
+from autocad_mcp.technical_office.partlist_metrics import enrich_partlist_metrics
 
 
 def build_qc_report(
@@ -25,7 +26,7 @@ def build_qc_report(
         "autocad_live_check": autocad_live_status,
         "dxf": _check_dxf(spec, dxf_file),
         "nc1": _check_nc1(spec, nc1_file),
-        "plate_spec": spec.to_dict(),
+        "plate_spec": enrich_partlist_metrics(spec.to_dict()),
     }
     checks["ok"] = bool(checks["dxf"]["ok"] and checks["nc1"]["ok"])
     return checks
@@ -53,11 +54,14 @@ def _check_dxf(spec: PlateSpec, path: Path) -> dict[str, Any]:
     polygon_corner_count = max(0, len(outer_points) - 4) if outer_points else 0
     corner_relief_count = max(bulge_count, polygon_corner_count)
     corner_reliefs_ok = not spec.corner_reliefs or corner_relief_count >= len(spec.corner_reliefs)
+    slot_polys = [e for e in closed_polylines if e.dxf.layer == "PLATE_SLOTS"]
+    slots_ok = len(slot_polys) == len(spec.slots)
     ok = (
         doc.dxfversion == "AC1027"
         and len(circles) == len(spec.holes)
         and bool(closed_polylines)
         and corner_reliefs_ok
+        and slots_ok
     )
     return {
         "ok": ok,
@@ -65,6 +69,8 @@ def _check_dxf(spec: PlateSpec, path: Path) -> dict[str, Any]:
         "circle_count": len(circles),
         "closed_polyline_count": len(closed_polylines),
         "expected_holes": len(spec.holes),
+        "slot_polyline_count": len(slot_polys),
+        "expected_slots": len(spec.slots),
         "corner_relief_count": corner_relief_count,
         "arc_corner_relief_count": bulge_count,
         "polygon_corner_relief_count": polygon_corner_count,

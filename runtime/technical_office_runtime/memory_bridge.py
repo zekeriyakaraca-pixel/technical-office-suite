@@ -25,6 +25,16 @@ CREATE TABLE IF NOT EXISTS extraction_patterns (
 );
 CREATE INDEX IF NOT EXISTS idx_fingerprint ON extraction_patterns(pdf_fingerprint);
 CREATE INDEX IF NOT EXISTS idx_confidence ON extraction_patterns(confidence DESC);
+CREATE TABLE IF NOT EXISTS page_classification_hints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pdf_sha256 TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    excluded_pages TEXT NOT NULL,
+    note TEXT,
+    source TEXT NOT NULL DEFAULT 'manager_decision',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_page_hints_sha256 ON page_classification_hints(pdf_sha256);
 """
 
 
@@ -169,6 +179,61 @@ class MemoryBridge:
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_recent_patterns(self, limit: int = 3) -> list[dict[str, Any]]:
+        """Return the most recently created extraction patterns for manager context."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT job_id, confidence, source, created_at,
+                       json_array_length(plate_specs) AS pattern_count
+                FROM extraction_patterns
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def record_page_exclusion(
+        self,
+        pdf_sha256: str,
+        job_id: str,
+        excluded_pages: list[int],
+        note: str = "",
+    ) -> None:
+        """Save a manager page-exclusion decision keyed by PDF SHA256 hash."""
+        now = datetime.now().astimezone().isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO page_classification_hints "
+                "(pdf_sha256, job_id, excluded_pages, note, source, created_at) "
+                "VALUES (?, ?, ?, ?, 'manager_decision', ?)",
+                (pdf_sha256, job_id, json.dumps(excluded_pages), note[:500], now),
+            )
+        log.info(
+            "memory_bridge.page_exclusion_recorded",
+            sha256=pdf_sha256[:12],
+            job_id=job_id,
+            pages=excluded_pages,
+        )
+
+    def find_page_hints(self, pdf_sha256: str) -> list[int]:
+        """Return excluded page numbers from the most recent matching manager decision."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT excluded_pages FROM page_classification_hints "
+                "WHERE pdf_sha256 = ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (pdf_sha256,),
+            ).fetchone()
+        if row is None:
+            return []
+        try:
+            result = json.loads(row[0])
+            return result if isinstance(result, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
 
 
 _bridge_instances: dict[str, MemoryBridge] = {}

@@ -432,8 +432,22 @@ class TestEntityModificationExtended:
         assert r.ok
         assert r.payload["copies"] == 5  # 2*3 - 1 original
 
-    async def test_entity_offset_unsupported(self, backend):
-        cr = await backend.create_line(0, 0, 10, 10)
+    async def test_entity_offset_line(self, backend):
+        cr = await backend.create_line(0, 0, 10, 0)
+        handle = cr.payload["handle"]
+        r = await backend.entity_offset(handle, 5)
+        assert r.ok
+        assert r.payload["entity_type"] == "LINE"
+
+    async def test_entity_offset_circle(self, backend):
+        cr = await backend.create_circle(0, 0, 10)
+        handle = cr.payload["handle"]
+        r = await backend.entity_offset(handle, 3)
+        assert r.ok
+        assert r.payload["entity_type"] == "CIRCLE"
+
+    async def test_entity_offset_unsupported_type(self, backend):
+        cr = await backend.create_mtext(0, 0, 20, "test")
         handle = cr.payload["handle"]
         r = await backend.entity_offset(handle, 5)
         assert not r.ok
@@ -445,6 +459,81 @@ class TestEntityModificationExtended:
 
     async def test_entity_chamfer_unsupported(self, backend):
         r = await backend.entity_chamfer("a", "b", 5, 5)
+        assert not r.ok
+
+    async def test_entity_set_properties(self, backend):
+        cr = await backend.create_line(0, 0, 10, 10)
+        handle = cr.payload["handle"]
+        r = await backend.entity_set_properties(handle, {"layer": "TEST_LAYER", "color": 1})
+        assert r.ok
+        assert "layer" in r.payload["updated"]
+        e = backend._doc.entitydb.get(handle)
+        assert e.dxf.layer == "TEST_LAYER"
+
+    async def test_entity_query_by_type(self, backend):
+        await backend.create_line(0, 0, 10, 0)
+        await backend.create_circle(5, 5, 3)
+        r = await backend.entity_query({"type": "LINE"})
+        assert r.ok
+        assert all(e["type"] == "LINE" for e in r.payload["entities"])
+
+    async def test_entity_query_by_bbox(self, backend):
+        await backend.create_circle(5, 5, 1)
+        await backend.create_circle(100, 100, 1)
+        r = await backend.entity_query({"type": "CIRCLE", "bbox": [0, 0, 20, 20]})
+        assert r.ok
+        assert r.payload["count"] == 1
+
+    async def test_entity_erase_many(self, backend):
+        h1 = (await backend.create_line(0, 0, 10, 0)).payload["handle"]
+        h2 = (await backend.create_line(0, 5, 10, 5)).payload["handle"]
+        r = await backend.entity_erase_many([h1, h2, "nonexistent"])
+        assert r.ok
+        assert sorted(r.payload["erased"]) == sorted([h1, h2])
+        assert r.payload["not_found"] == ["nonexistent"]
+
+    async def test_entity_explode_polyline(self, backend):
+        r_poly = await backend.create_rectangle(0, 0, 10, 5)
+        handle = r_poly.payload["handle"]
+        r = await backend.entity_explode(handle)
+        assert r.ok
+        assert r.payload["count"] == 4  # rectangle = 4 closed segments
+
+    async def test_entity_explode_unsupported(self, backend):
+        cr = await backend.create_circle(0, 0, 5)
+        r = await backend.entity_explode(cr.payload["handle"])
+        assert not r.ok
+        assert "not supported" in r.error.lower()
+
+    async def test_create_spline(self, backend):
+        r = await backend.create_spline([[0, 0], [5, 10], [10, 0]])
+        assert r.ok
+        assert r.payload["entity_type"] == "SPLINE"
+
+    async def test_create_mleader(self, backend):
+        r = await backend.create_mleader([[0, 0], [10, 10]], "Leader text")
+        assert r.ok
+        assert r.payload["entity_type"] == "MLEADER"
+
+    async def test_drawing_list_layouts(self, backend):
+        r = await backend.drawing_list_layouts()
+        assert r.ok
+        names = [l["name"] for l in r.payload["layouts"]]
+        assert "Model" in names
+
+    async def test_drawing_get_extents(self, backend):
+        await backend.create_line(0, 0, 100, 50)
+        r = await backend.drawing_get_extents()
+        assert r.ok
+
+    async def test_layer_delete(self, backend):
+        await backend.layer_create("TO_DELETE")
+        r = await backend.layer_delete("TO_DELETE")
+        assert r.ok
+        assert r.payload["deleted"] == "TO_DELETE"
+
+    async def test_layer_delete_zero_blocked(self, backend):
+        r = await backend.layer_delete("0")
         assert not r.ok
 
 

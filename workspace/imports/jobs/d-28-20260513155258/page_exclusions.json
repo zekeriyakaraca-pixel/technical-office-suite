@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "excluded_pages": [
+    {
+      "page": 1,
+      "reason": "manager_confirmed_non_plate_page",
+      "note": "Sayfa No: 1 baslik sayfasidir, plaka cizimi yok, atlansin. Sayfa No: 2 profil detayidir, plaka olarak cizilmesin ve atlansin. Sayfa No: 3 profil detayidir, plaka olarak cizilmesin ve atlansin.",
+      "decided_by": "teknik-ofis-muduru",
+      "decided_at": "2026-05-13T16:46:49.696940+03:00"
+    },
+    {
+      "page": 2,
+      "reason": "manager_confirmed_non_plate_page",
+      "note": "Sayfa No: 1 baslik sayfasidir, plaka cizimi yok, atlansin. Sayfa No: 2 profil detayidir, plaka olarak cizilmesin ve atlansin. Sayfa No: 3 profil detayidir, plaka olarak cizilmesin ve atlansin.",
+      "decided_by": "teknik-ofis-muduru",
+      "decided_at": "2026-05-13T16:46:49.696940+03:00"
+    },
+    {
+      "page": 3,
+      "reason": "manager_confirmed_non_plate_page",
+      "note": "Sayfa No: 1 baslik sayfasidir, plaka cizimi yok, atlansin. Sayfa No: 2 profil detayidir, plaka olarak cizilmesin ve atlansin. Sayfa No: 3 profil detayidir, plaka olarak cizilmesin ve atlansin.",
+      "decided_by": "teknik-ofis-muduru",
+      "decided_at": "2026-05-13T16:46:49.696940+03:00"
+    }
+  ]
+}

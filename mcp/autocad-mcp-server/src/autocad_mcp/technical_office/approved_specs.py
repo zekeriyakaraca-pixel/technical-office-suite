@@ -115,11 +115,17 @@ def _corner_reliefs(value: Any, row_number: int) -> list[CornerReliefSpec]:
     for index, item in enumerate(value, start=1):
         if not isinstance(item, dict):
             raise ApprovedSpecValidationError(f"row {row_number} corner relief {index}: must be an object")
+        # polygon_contour sentinel: polygon çizim işareti, gerçek relief değil — atla
+        rtype = _optional_str(item.get("relief_type") or item.get("type")) or ""
+        if _normalize_relief_type(rtype) == "polygon_contour":
+            continue
         reliefs.append(
             CornerReliefSpec(
                 corner=_required_str(item, "corner", row_number),
                 radius=_required_float(item, "radius", row_number),
-                relief_type=_normalize_relief_type(_optional_str(item.get("relief_type")) or "round"),
+                relief_type=_normalize_relief_type(rtype or "round"),
+                x_offset=_optional_float(item.get("x_offset"), "x_offset", row_number),
+                y_offset=_optional_float(item.get("y_offset"), "y_offset", row_number),
             )
         )
     return reliefs
@@ -129,7 +135,7 @@ def _normalize_relief_type(value: str) -> str:
     normalized = value.strip().lower()
     if normalized in {"pah", "bevel", "beveled", "chamfered"}:
         return "chamfer"
-    if normalized in {"rounded", "radius"}:
+    if normalized in {"round_relief", "rounded", "radius"}:
         return "round"
     return normalized or "round"
 

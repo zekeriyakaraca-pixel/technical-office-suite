@@ -4,12 +4,12 @@
     {
       "role": "user",
       "content": "merhaba mudurum",
-      "timestamp": 1778153019377
+      "timestamp": 1778754026431
     },
     {
       "role": "assistant",
       "content": "Dogal cevap: merhaba mudurum",
-      "timestamp": 1778153019377
+      "timestamp": 1778754026432
     }
   ]
 }

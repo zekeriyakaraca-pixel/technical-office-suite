@@ -1,6 +1,6 @@
 {
   "approved_by": "teknik-ofis-muduru",
-  "approved_at": "2026-05-07T09:15:54.875491+03:00",
+  "approved_at": "2026-05-13T09:28:14.706403+03:00",
   "plates": [
     {
       "poz_no": "205",
@@ -18,22 +18,30 @@
         {
           "corner": "top_left",
           "radius": 20.0,
-          "relief_type": "round"
+          "relief_type": "round",
+          "x_offset": null,
+          "y_offset": null
         },
         {
           "corner": "top_right",
           "radius": 20.0,
-          "relief_type": "round"
+          "relief_type": "round",
+          "x_offset": null,
+          "y_offset": null
         },
         {
           "corner": "bottom_left",
           "radius": 20.0,
-          "relief_type": "round"
+          "relief_type": "round",
+          "x_offset": null,
+          "y_offset": null
         },
         {
           "corner": "bottom_right",
           "radius": 20.0,
-          "relief_type": "round"
+          "relief_type": "round",
+          "x_offset": null,
+          "y_offset": null
         }
       ],
       "source_page": 1,
@@ -55,7 +63,22 @@
       "unit": "mm",
       "holes": [],
       "slots": [],
-      "corner_reliefs": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 30.0,
+          "relief_type": "chamfer",
+          "x_offset": 30.0,
+          "y_offset": 120.0
+        },
+        {
+          "corner": "top_right",
+          "radius": 30.0,
+          "relief_type": "chamfer",
+          "x_offset": 30.0,
+          "y_offset": 120.0
+        }
+      ],
       "source_page": 2,
       "confidence": 0.78,
       "notes": [
@@ -75,9 +98,827 @@
       "unit": "mm",
       "holes": [],
       "slots": [],
-      "corner_reliefs": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 30.0,
+          "relief_type": "chamfer",
+          "x_offset": 30.0,
+          "y_offset": 120.0
+        },
+        {
+          "corner": "bottom_right",
+          "radius": 10.0,
+          "relief_type": "chamfer",
+          "x_offset": 10.0,
+          "y_offset": 10.0
+        }
+      ],
       "source_page": 3,
       "confidence": 0.76,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "208",
+      "width": 300.0,
+      "height": 200.0,
+      "thickness": 12.0,
+      "material": "S275J2",
+      "quantity": 3,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [
+        {
+          "x": 50.0,
+          "y": 50.0,
+          "diameter": 17.0
+        },
+        {
+          "x": 250.0,
+          "y": 50.0,
+          "diameter": 17.0
+        },
+        {
+          "x": 50.0,
+          "y": 150.0,
+          "diameter": 17.0
+        },
+        {
+          "x": 250.0,
+          "y": 150.0,
+          "diameter": 17.0
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "source_page": 4,
+      "confidence": 0.95,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "209",
+      "width": 300.0,
+      "height": 150.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 30,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 60.0,
+          "relief_type": "chamfer",
+          "x_offset": 60.0,
+          "y_offset": 120.0
+        },
+        {
+          "corner": "top_right",
+          "radius": 60.0,
+          "relief_type": "chamfer",
+          "x_offset": 60.0,
+          "y_offset": 120.0
+        }
+      ],
+      "source_page": 5,
+      "confidence": 0.82,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "210",
+      "width": 96.0,
+      "height": 150.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 60,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 10.0,
+          "relief_type": "chamfer",
+          "x_offset": 10.0,
+          "y_offset": 120.0
+        },
+        {
+          "corner": "bottom_right",
+          "radius": 10.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 6,
+      "confidence": 0.72,
+      "notes": [
+        "manager_approved_from_visual_candidate",
+        "manager_corrected_corner_relief:top_left:10x120"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "211",
+      "width": 300.0,
+      "height": 200.0,
+      "thickness": 12.0,
+      "material": "S275J2",
+      "quantity": 27,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [
+        {
+          "x": 50.0,
+          "y": 45.0,
+          "diameter": 17.0
+        },
+        {
+          "x": 250.0,
+          "y": 45.0,
+          "diameter": 17.0
+        },
+        {
+          "x": 50.0,
+          "y": 155.0,
+          "diameter": 17.0
+        },
+        {
+          "x": 250.0,
+          "y": 155.0,
+          "diameter": 17.0
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [],
+      "source_page": 7,
+      "confidence": 0.95,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "212",
+      "width": 200.0,
+      "height": 30.0,
+      "thickness": 4.0,
+      "material": "S275J2",
+      "quantity": 20,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [],
+      "source_page": 8,
+      "confidence": 0.95,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "213",
+      "width": 145.0,
+      "height": 260.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 34,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 20.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 20.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 9,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "214",
+      "width": 145.0,
+      "height": 260.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 1,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_right",
+          "radius": 20.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_right",
+          "radius": 20.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 10,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "215",
+      "width": 70.0,
+      "height": 276.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 107,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 11,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "216",
+      "width": 145.0,
+      "height": 260.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 7,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 12,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "217",
+      "width": 145.0,
+      "height": 260.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 1,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 13,
+      "confidence": 0.88,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "218",
+      "width": 145.0,
+      "height": 260.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 19,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 14,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "219",
+      "width": 72.0,
+      "height": 276.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 6,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 15,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "220",
+      "width": 85.0,
+      "height": 370.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 4,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 16,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "221",
+      "width": 85.0,
+      "height": 370.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 10,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 17,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "222",
+      "width": 70.0,
+      "height": 276.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 1,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 18,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "223",
+      "width": 140.0,
+      "height": 313.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 8,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 19,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "224",
+      "width": 140.0,
+      "height": 313.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 1,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 20.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 20.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 20,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "225",
+      "width": 45.0,
+      "height": 180.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 2,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 21,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "226",
+      "width": 70.0,
+      "height": 276.0,
+      "thickness": 8.0,
+      "material": "S275J2",
+      "quantity": 1,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 22,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "227",
+      "width": 70.0,
+      "height": 276.0,
+      "thickness": 10.0,
+      "material": "S275J2",
+      "quantity": 15,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 23,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "228",
+      "width": 85.0,
+      "height": 370.0,
+      "thickness": 10.0,
+      "material": "S275J2",
+      "quantity": 2,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 24,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "229",
+      "width": 70.0,
+      "height": 276.0,
+      "thickness": 10.0,
+      "material": "S275J2",
+      "quantity": 1,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 25,
+      "confidence": 0.9,
+      "notes": [
+        "manager_approved_from_visual_candidate"
+      ],
+      "source_pdf": "deneme.pdf"
+    },
+    {
+      "poz_no": "230",
+      "width": 145.0,
+      "height": 260.0,
+      "thickness": 10.0,
+      "material": "S275J2",
+      "quantity": 2,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "top_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        },
+        {
+          "corner": "bottom_left",
+          "radius": 15.0,
+          "relief_type": "chamfer",
+          "x_offset": null,
+          "y_offset": null
+        }
+      ],
+      "source_page": 26,
+      "confidence": 0.9,
       "notes": [
         "manager_approved_from_visual_candidate"
       ],

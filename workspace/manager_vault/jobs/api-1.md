@@ -1,0 +1,13 @@
+# api-1
+
+Updated: 2026-05-13T15:44:44.734623+03:00
+
+## Facts
+- [open] issue: Anladım. `api-partlist-blocked` işindeki `poz_no_not_found` durumunu, verdiğiniz `api-1` poz numarası ile güncelliyorum. Bu bilgiyle birlikte, sistemin bu işi yeniden işlemesi için gerekli poz listesini oluşturup AutoCAD uzmanımıza atamasını yapacağım. Uzmanımız, PDF'i `api-1` poz numarasına göre işleyecek, DXF ve NC1 dosyalarını üretecek. Ardından, bağımsız kalite kontrol ekibimiz bu dosyaları kontrol edip QC raporunu oluşturacak. **Aksiyon:** 1. `api-partlist-blocked` işi için `positions.js...
+- [decision] manager_decision: `api-partlist-blocked` icin poz bilgisini uyguladim ve isi yeniden calistirdim. - Yazilan poz: api-1, sayfa: 1 - positions.json: workspace/imports/jobs/api-partlist-blocked/positions.json - Poz no blokaji: kapandi - Yeniden uretim/QC: ok=false - Uretilen poz: 0 - Manuel inceleme: 1 - FSM: awaiting_approval Kalan manuel inceleme: - Poz api-1, sayfa 1: plate_geometry_not_found - Poz bilgisi bulundu, ancak plaka olculeri/geometrisi otomatik uretim icin guvenilir cikarilamadi. Karar: Poz no artik...
+
+## Recent Conversation
+- 2026-05-13T15:30:03.893052+03:00 user: poz biligisi "api-1" olarak alınabilir
+- 2026-05-13T15:30:03.904118+03:00 assistant: Anladım. `api-partlist-blocked` işindeki `poz_no_not_found` durumunu, verdiğiniz `api-1` poz numarası ile güncelliyorum. Bu bilgiyle birlikte, sistemin bu işi yeniden işlemesi için gerekli poz listesini oluşturup AutoCAD uzmanımıza atamasını yapacağım. Uzmanımız, PDF'i `api-1` poz numarasına göre işleyecek, DXF ve NC1 dosyalarını üretecek. Ardından, bağımsız kalite kontrol ekibimiz bu dosyaları kontrol edip QC raporunu oluşturacak. **Aksiyon:** 1. `api-partlist-blocked` işi için `positions.js...
+- 2026-05-13T15:44:44.727612+03:00 user: poz bilgisi "api-1" olarak alinabilir
+- 2026-05-13T15:44:44.728613+03:00 assistant: `api-partlist-blocked` icin poz bilgisini uyguladim ve isi yeniden calistirdim. - Yazilan poz: api-1, sayfa: 1 - positions.json: workspace/imports/jobs/api-partlist-blocked/positions.json - Poz no blokaji: kapandi - Yeniden uretim/QC: ok=false - Uretilen poz: 0 - Manuel inceleme: 1 - FSM: awaiting_approval Kalan manuel inceleme: - Poz api-1, sayfa 1: plate_geometry_not_found - Poz bilgisi bulundu, ancak plaka olculeri/geometrisi otomatik uretim icin guvenilir cikarilamadi. Karar: Poz no artik...

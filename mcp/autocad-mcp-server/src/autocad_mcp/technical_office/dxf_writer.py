@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import ezdxf
@@ -36,9 +37,18 @@ def write_plate_dxf(spec: PlateSpec, path: str | Path) -> Path:
     for hole in spec.holes:
         msp.add_circle((hole.x, hole.y), hole.diameter / 2.0, dxfattribs={"layer": "PLATE_HOLES"})
     for slot in spec.slots:
-        x0 = slot.x - slot.length / 2.0
-        y0 = slot.y - slot.width / 2.0
-        pts = [(x0, y0), (x0 + slot.length, y0), (x0 + slot.length, y0 + slot.width), (x0, y0 + slot.width)]
+        half_len = slot.length / 2.0
+        half_wid = slot.width / 2.0
+        rad = math.radians(slot.rotation_deg)
+        cos_r, sin_r = math.cos(rad), math.sin(rad)
+        corners_local = [
+            (-half_len, -half_wid), (half_len, -half_wid),
+            (half_len, half_wid), (-half_len, half_wid),
+        ]
+        pts = [
+            (slot.x + lx * cos_r - ly * sin_r, slot.y + lx * sin_r + ly * cos_r)
+            for lx, ly in corners_local
+        ]
         msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": "PLATE_SLOTS"})
 
     label = f"{safe_name(spec.poz_no)} T={spec.thickness:g} {spec.material}"

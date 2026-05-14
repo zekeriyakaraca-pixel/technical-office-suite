@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .text_normalization import repair_text
+
 MAX_SESSION_MESSAGES = 40
 _OLD_LOCAL_MODEL_NAME = "ol" + "lama"
 
@@ -227,7 +229,7 @@ def sanitize_messages(messages: list[dict[str, Any]], *, session_id: str) -> lis
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
             continue
-        clean_content = _fix_mojibake(content.strip())
+        clean_content = repair_text(content.strip())
         if role == "assistant" and _looks_like_unsafe_pdf_guidance(clean_content):
             clean_content = _manual_review_replacement(clean_content, agent_id=agent_id)
         next_message: dict[str, Any] = {"role": role, "content": clean_content}
@@ -375,3 +377,52 @@ def _extract_first(pattern: re.Pattern[str], content: str) -> str | None:
         return None
     value = match.group(0)
     return None if value.lower() == "your_file.pdf" else value
+
+
+def cleanup_dashboard_guided_flow_session(
+    sessions_root: Path,
+    *,
+    session_id: str = "agent:teknik-ofis-muduru:dashboard",
+) -> int:
+    path = _session_path(sessions_root, session_id)
+    if not path.exists():
+        return 0
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return 0
+    messages = data.get("messages") if isinstance(data, dict) else None
+    if not isinstance(messages, list):
+        return 0
+    removed = 0
+    filtered: list[dict[str, Any]] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role")
+        content = repair_text(str(message.get("content") or "")).strip()
+        if role == "user" and _looks_like_synthetic_corner_trigger(content):
+            removed += 1
+            continue
+        next_message = dict(message)
+        next_message["content"] = content
+        filtered.append(next_message)
+    sanitized = sanitize_messages(filtered, session_id=session_id)
+    if removed == 0 and sanitized == messages:
+        return 0
+    try:
+        path.write_text(
+            json.dumps({"session_id": session_id, "messages": sanitized}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        return 0
+    return removed
+
+
+def _looks_like_synthetic_corner_trigger(content: str) -> bool:
+    lowered = content.lower()
+    return (
+        lowered.startswith("mudur, secili is icin aday onayi kose bosaltma bilgisi eksik oldugu icin durdu")
+        and "corner_reliefs" in lowered
+    )

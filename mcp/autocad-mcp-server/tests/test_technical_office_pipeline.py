@@ -183,8 +183,36 @@ def test_chamfered_polygon_reliefs_are_qc_checked(tmp_path):
     assert all(abs(bulge) <= 1e-9 for _x, _y, bulge in points)
     assert qc["ok"] is True
     assert qc["dxf"]["polygon_corner_relief_count"] == 4
-    assert qc["dxf"]["corner_relief_count"] == 4
-    assert qc["nc1"]["ak_point_count"] == 8
+
+
+def test_asymmetric_chamfer_offsets_are_written_to_outer_contour(tmp_path):
+    spec = PlateSpec(
+        poz_no="P-ASYM-CHAMFER",
+        width=240,
+        height=150,
+        thickness=8,
+        corner_reliefs=[
+            CornerReliefSpec(corner="top_left", radius=30, relief_type="chamfer", x_offset=30, y_offset=120),
+            CornerReliefSpec(corner="top_right", radius=30, relief_type="chamfer", x_offset=30, y_offset=120),
+        ],
+    )
+    dxf_path = tmp_path / "P-ASYM-CHAMFER.dxf"
+    nc1_path = tmp_path / "P-ASYM-CHAMFER.nc1"
+
+    write_plate_dxf(spec, dxf_path)
+    write_plate_nc1(spec, nc1_path)
+    qc = build_qc_report(spec, dxf_path, nc1_path)
+
+    doc = ezdxf.readfile(dxf_path)
+    outer = next(entity for entity in doc.modelspace() if entity.dxftype() == "LWPOLYLINE")
+    points = [(round(x, 3), round(y, 3)) for x, y, _bulge in outer.get_points("xyb")]
+    assert (240.0, 30.0) in points
+    assert (210.0, 150.0) in points
+    assert (30.0, 150.0) in points
+    assert (0.0, 30.0) in points
+    assert qc["ok"] is True
+    assert qc["dxf"]["polygon_corner_relief_count"] == 2
+    assert qc["nc1"]["ak_point_count"] == 6
 
 
 def test_plate_nc1_snapshot(tmp_path):
@@ -206,6 +234,22 @@ def test_plate_nc1_snapshot(tmp_path):
         "  150.000 25.000 18.000\n"
         "EN\n"
     )
+
+
+def test_qc_report_calculates_missing_partlist_metrics(tmp_path):
+    spec = _sample_plate()
+    dxf_path = tmp_path / "P100.dxf"
+    nc1_path = tmp_path / "P100.nc1"
+    write_plate_dxf(spec, dxf_path)
+    write_plate_nc1(spec, nc1_path)
+
+    qc = build_qc_report(spec, dxf_path, nc1_path)
+
+    plate_spec = qc["plate_spec"]
+    assert plate_spec["unit_surface_area_m2"] == pytest.approx(0.046)
+    assert plate_spec["unit_weight_kg"] == pytest.approx(1.57)
+    assert plate_spec["partlist_metrics_source"] == "calculated_geometry"
+    assert set(plate_spec["partlist_metrics_calculated"]) == {"unit_surface_area_m2", "unit_weight_kg"}
 
 
 def test_run_job_from_vector_pdf_and_manager_list(tmp_path):
@@ -338,6 +382,41 @@ def test_run_job_can_select_one_pdf_from_multi_pdf_job(tmp_path):
     assert result.ok is True
     assert [item.poz_no for item in result.produced] == ["P1142"]
     assert not (tmp_path / "out" / "P1001").exists()
+
+
+def test_run_job_applies_manager_page_exclusions(tmp_path):
+    job_dir = tmp_path / "job-page-exclusion"
+    job_dir.mkdir()
+    _write_multi_page_vector_pdf(
+        job_dir / "input.pdf",
+        [
+            ["POZ: COVER1", "PROJECT TITLE PAGE"],
+            ["POZ: P100", "PLAKA 90x40x6 S235"],
+        ],
+    )
+    (job_dir / "page_exclusions.json").write_text(
+        json.dumps(
+            {
+                "excluded_pages": [
+                    {
+                        "page": 1,
+                        "reason": "manager_confirmed_non_plate_page",
+                        "note": "title page",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_job(job_dir, output_root=tmp_path / "out", autocad_live_policy="off")
+
+    assert result.manual_reviews == []
+    assert [item.poz_no for item in result.produced] == ["P100"]
+    applied = json.loads((tmp_path / "out" / "page_exclusions_applied.json").read_text(encoding="utf-8"))
+    assert applied["excluded_pages"][0]["page"] == 1
+    candidates = json.loads((tmp_path / "out" / "extraction_candidates.json").read_text(encoding="utf-8"))
+    assert [candidate["page"] for candidate in candidates["candidates"]] == [2]
 
 
 def test_run_job_reads_plate_profile_table_without_prefixed_poz(tmp_path):
@@ -490,7 +569,7 @@ def test_partlist_row_from_qc_matches_ert_format(tmp_path):
     assert Path(result.path).name == "EAF_Steel_Platform_partlist.xlsx"
 
 
-def test_partlist_missing_metrics_writes_manual_review(tmp_path):
+def test_partlist_missing_metrics_are_calculated_from_geometry(tmp_path):
     output_dir = tmp_path / "out"
     plate_dir = output_dir / "P100"
     plate_dir.mkdir(parents=True)
@@ -523,9 +602,10 @@ def test_partlist_missing_metrics_writes_manual_review(tmp_path):
 
     rows, manual_reviews = build_partlist_rows(output_dir)
 
-    assert rows == []
-    assert manual_reviews[0]["reason"] == "partlist_metric_missing"
-    assert "will not be guessed" in manual_reviews[0]["detail"]
+    assert manual_reviews == []
+    assert len(rows) == 1
+    assert rows[0].birim_alan == pytest.approx(0.046)
+    assert rows[0].birim_agirlik == pytest.approx(1.57)
 
 
 def test_partlist_blocks_when_production_manual_review_is_pending(tmp_path):
@@ -685,6 +765,32 @@ def test_run_job_requires_review_when_hole_callout_has_no_coordinates(tmp_path):
     notifications = json.loads((tmp_path / "out" / "manager_notifications.json").read_text(encoding="utf-8"))
     assert notifications[0]["role"] == "teknik-ofis-muduru"
     assert notifications[0]["poz_no"] == "1001"
+
+
+def test_mark_column_bottom_table_supplies_poz_for_manual_review():
+    extraction = PdfExtraction(
+        pages=[
+            PdfPageContent(
+                page_number=4,
+                text=(
+                    "FRONT VIE\nTOP VIE\n402\nPL1022\nS55JR\n5.5\n0.1\n5.\n0.\n5.\n"
+                    "DANIELI CONSTRUCTION\nMARK\nPROFILE\nMATERIAL\n.T\nLENGTH mm\nAREA m2\n"
+                    "EIGHT kg\nTOTAL\nIN ASSEMBLIES\n"
+                ),
+                vector_operator_count=50,
+                raw_length=100,
+            )
+        ],
+        manual_review_required=False,
+        confidence=0.95,
+        notes=[],
+    )
+
+    result = build_plate_specs(extraction)
+
+    assert result.plates == []
+    assert result.manual_reviews[0].reason == "plate_geometry_not_found"
+    assert result.manual_reviews[0].poz_no == "402"
 
 
 def test_vector_holes_are_mapped_from_dimension_chain():
@@ -958,6 +1064,64 @@ def test_run_job_blocks_open_manager_geometry_notes(tmp_path):
     assert qc["manual_review_required"] is True
 
 
+def test_run_job_accepts_single_pdf_alias_when_geometry_note_is_resolved(tmp_path):
+    job_dir = tmp_path / "job-approved-resolved-geometry-note"
+    output_dir = tmp_path / "out"
+    job_dir.mkdir()
+    output_dir.mkdir()
+    _write_vector_only_pdf(job_dir / "input.pdf")
+    (output_dir / "manager_issue_notes.jsonl").write_text(
+        json.dumps(
+            {
+                "status": "open",
+                "tags": ["pah/kose eksigi", "poligon kontur"],
+                "affected_pozs": ["206"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (job_dir / "approved_plate_specs.json").write_text(
+        json.dumps(
+            {
+                "approved_by": "teknik-ofis-muduru",
+                "plates": [
+                    {
+                        "poz_no": "206",
+                        "width": 240,
+                        "height": 150,
+                        "thickness": 8,
+                        "material": "S275J2",
+                        "quantity": 10,
+                        "source_pdf": "stale-candidate-name.pdf",
+                        "source_page": 1,
+                        "corner_reliefs": [
+                            {
+                                "corner": "top_left",
+                                "relief_type": "chamfer",
+                                "radius": 30,
+                                "x_offset": 30,
+                                "y_offset": 120,
+                            }
+                        ],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_job(job_dir, output_dir, autocad_live_policy="off")
+
+    assert result.ok is True
+    assert result.manual_reviews == []
+    qc = json.loads((output_dir / "206" / "206_qc.json").read_text(encoding="utf-8"))
+    assert qc["ok"] is True
+    assert qc["manual_review_required"] is False
+    assert qc["source_pdf"] == "input.pdf"
+
+
 def _sample_plate() -> PlateSpec:
     return PlateSpec(
         poz_no="P100",
@@ -1007,6 +1171,38 @@ def _write_vector_pdf(path: Path, text_lines: list[str]) -> None:
         "trailer << /Root 1 0 R >>\n"
         "%%EOF\n"
     )
+    path.write_bytes(pdf.encode("latin-1"))
+
+
+def _write_multi_page_vector_pdf(path: Path, pages: list[list[str]]) -> None:
+    objects = ["1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj"]
+    kids = " ".join(f"{3 + index * 2} 0 R" for index in range(len(pages)))
+    objects.append(f"2 0 obj << /Type /Pages /Kids [{kids}] /Count {len(pages)} >> endobj")
+    for index, text_lines in enumerate(pages):
+        page_obj = 3 + index * 2
+        content_obj = page_obj + 1
+        text_commands = "\n".join(f"({line}) Tj T*" for line in text_lines)
+        stream = (
+            "q\n"
+            "0 0 m 200 0 l 200 100 l 0 100 l h S\n"
+            "BT\n"
+            "/F1 12 Tf\n"
+            "10 10 Td\n"
+            f"{text_commands}\n"
+            "ET\n"
+            "Q\n"
+        )
+        objects.append(
+            f"{page_obj} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents {content_obj} 0 R >> endobj"
+        )
+        objects.append(
+            f"{content_obj} 0 obj << /Length {len(stream.encode('latin-1'))} >>\n"
+            "stream\n"
+            f"{stream}"
+            "endstream\n"
+            "endobj"
+        )
+    pdf = "%PDF-1.4\n" + "\n".join(objects) + "\ntrailer << /Root 1 0 R >>\n%%EOF\n"
     path.write_bytes(pdf.encode("latin-1"))
 
 

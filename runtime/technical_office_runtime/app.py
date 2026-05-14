@@ -22,6 +22,15 @@ from .audit import get_audit_logger
 from .auth import auth_status, require_auth
 from .codex_bridge import CodexBridge, CodexRunRequest
 from .config import RuntimePaths, ensure_autocad_import_path, get_paths
+from .completion import (
+    DEFAULT_MANAGER_SESSION_ID,
+    append_job_event as append_completion_event,
+    backfill_all_learning,
+    backfill_job_learning,
+    complete_approved_job,
+    learning_health,
+    notify_job_blocked,
+)
 from .job_fsm import JobState, get_fsm
 from .manager_memory import get_manager_memory
 from .memory_bridge import get_memory_bridge
@@ -31,6 +40,7 @@ from .sla import get_sla_monitor
 from .workers import get_workers
 from .registry import MODEL_ID, registry_response, runtime_metadata, state_response
 from .session_store import (
+    cleanup_dashboard_guided_flow_session,
     ensure_main_session_entry,
     list_sessions,
     load_session,
@@ -59,7 +69,13 @@ VISUAL_CANDIDATE_MAX_PAGES = 80
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    sanitize_session_files(get_paths().sessions_root)
+    paths = get_paths()
+    sanitize_session_files(paths.sessions_root)
+    cleanup_dashboard_guided_flow_session(paths.sessions_root)
+    get_manager_memory(paths.workspace_root).cleanup_guided_flow_noise(
+        job_id="danieli-1701",
+        session_id="agent:teknik-ofis-muduru:dashboard",
+    )
     yield
 
 
@@ -154,6 +170,30 @@ def memory_patterns(limit: int = 50) -> dict[str, Any]:
     paths = get_paths()
     bridge = get_memory_bridge(paths.workspace_root)
     return {"ok": True, "patterns": bridge.list_patterns(limit=min(limit, 200))}
+
+
+@app.get("/api/learning/health")
+def learning_health_api() -> dict[str, Any]:
+    return learning_health(get_paths())
+
+
+@app.post("/api/jobs/{job_id}/learning/backfill", dependencies=[Depends(require_auth)])
+async def backfill_job_learning_api(job_id: str, request: Request) -> dict[str, Any]:
+    paths = get_paths()
+    _require_job(paths, job_id)
+    payload = await _optional_json(request)
+    return backfill_job_learning(
+        paths,
+        job_id,
+        dry_run=bool(payload.get("dry_run", False)),
+        session_id=_optional_str(payload.get("session_id")) or DEFAULT_MANAGER_SESSION_ID,
+    )
+
+
+@app.post("/api/learning/backfill", dependencies=[Depends(require_auth)])
+async def backfill_all_learning_api(request: Request) -> dict[str, Any]:
+    payload = await _optional_json(request)
+    return backfill_all_learning(get_paths(), dry_run=bool(payload.get("dry_run", True)))
 
 
 @app.get("/api/manager/memory")
@@ -315,24 +355,42 @@ async def manager_chat(request: Request) -> dict[str, Any]:
     if agent_id != "teknik-ofis-muduru":
         raise HTTPException(status_code=403, detail="Only teknik-ofis-muduru chat is enabled.")
     message = _optional_str(payload.get("message") or payload.get("content"))
-    if not message:
-        raise HTTPException(status_code=400, detail="message is required")
+    trigger = _manager_structured_trigger(payload.get("trigger"))
+    if not message and trigger is None:
+        raise HTTPException(status_code=400, detail="message or trigger is required")
     paths = get_paths()
     session_id = _optional_str(payload.get("session_id") or payload.get("conversation_id")) or "agent:teknik-ofis-muduru:dashboard"
-    incoming_history = payload.get("history") if isinstance(payload.get("history"), list) else []
+    incoming_history = _manager_incoming_history(payload.get("history"), message or "")
     server_history = load_session(paths.sessions_root, session_id)
     history = merge_history(server_history, incoming_history)
     selected_job_id = _optional_str(payload.get("selected_job_id") or payload.get("job_id"))
     memory_recall = get_manager_memory(paths.workspace_root).recall(
         session_id=session_id,
-        message=message,
+        message=message or "",
         selected_job_id=selected_job_id,
         history=history,
     )
-    enriched_message = _manager_message_with_context(paths, message, selected_job_id, memory_context=memory_recall.to_payload())
+    enriched_message = _manager_message_with_context(paths, message or "", selected_job_id, memory_context=memory_recall.to_payload())
     orchestrator = AgentOrchestrator(agent_id="teknik-ofis-muduru", bridge=_app_codex_bridge())
-    result = await asyncio.to_thread(orchestrator.run, enriched_message, history=history)
-    _save_turn(paths, session_id, history, message, result.content, selected_job_id=selected_job_id or memory_recall.primary_job_id)
+    result = await asyncio.to_thread(
+        orchestrator.run,
+        enriched_message,
+        history,
+        session_id=session_id,
+        selected_job_id=selected_job_id or memory_recall.primary_job_id,
+        trigger=trigger,
+    )
+    if message:
+        _save_turn(
+            paths,
+            session_id,
+            history,
+            message,
+            result.content,
+            selected_job_id=selected_job_id or memory_recall.primary_job_id,
+        )
+    else:
+        _save_assistant_turn(paths, session_id, history, result.content)
     return {
         "ok": True,
         "agent_id": "teknik-ofis-muduru",
@@ -414,6 +472,51 @@ def get_job_file(job_id: str, filename: str, inline: bool = False) -> FileRespon
     return FileResponse(path, media_type=media_type, filename=path.name)
 
 
+def _try_apply_memory_page_hints(paths: RuntimePaths, job_id: str) -> None:
+    """Aynı PDF için geçmiş müdür kararı varsa page_exclusions.json yaz."""
+    import hashlib as _hashlib
+    import json as _json
+    job_dir = paths.jobs_import_root / job_id
+    exclusions_path = job_dir / "page_exclusions.json"
+    if exclusions_path.exists():
+        return
+    try:
+        from .memory_bridge import get_memory_bridge
+        bridge = get_memory_bridge(paths.workspace_root)
+        for pdf in job_dir.glob("*.pdf"):
+            sha256 = _hashlib.sha256(pdf.read_bytes()).hexdigest()
+            hints = bridge.find_page_hints(sha256)
+            if hints:
+                exclusions_path.write_text(
+                    _json.dumps(
+                        {
+                            "schema_version": 1,
+                            "source": "memory_bridge_hint",
+                            "excluded_pages": [
+                                {
+                                    "page": p,
+                                    "reason": "non_plate_page",
+                                    "note": "hafıza tabanından öneri",
+                                }
+                                for p in hints
+                            ],
+                        },
+                        indent=2,
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                _append_job_event(
+                    paths,
+                    job_id,
+                    "memory_page_hint_applied",
+                    {"pdf": pdf.name, "pages": hints, "source": "memory_bridge"},
+                )
+                break
+    except Exception:
+        pass
+
+
 @app.post("/api/jobs/{job_id}/run")
 async def run_job_api(job_id: str, request: Request) -> dict[str, Any]:
     paths = get_paths()
@@ -427,9 +530,11 @@ async def run_job_api(job_id: str, request: Request) -> dict[str, Any]:
 
     payload = await _optional_json(request)
     autocad_policy = str(payload.get("autocad_live_policy") or payload.get("autocad") or "off")
+    session_id = _optional_str(payload.get("session_id")) or DEFAULT_MANAGER_SESSION_ID
 
     fsm.transition(job_id, JobState.CLASSIFYING, reason="run_api")
     _append_job_event(paths, job_id, "started", {"message": "Deterministic pipeline started", "fsm_state": "classifying"})
+    _try_apply_memory_page_hints(paths, job_id)
     tool = ToolRegistry(paths)
     result = tool.run("run_autocad_job", {"job_id": job_id, "autocad_live_policy": autocad_policy})
     if not result.get("ok"):
@@ -457,12 +562,30 @@ async def run_job_api(job_id: str, request: Request) -> dict[str, Any]:
         _append_job_event(paths, job_id, "completed", {"status": "needs_manager_approval"})
     else:
         if summary.get("ok"):
-            fsm.transition(job_id, JobState.PRODUCING, reason="production_started")
-            fsm.transition(job_id, JobState.QC_CHECKING, reason="qc_started")
-            fsm.transition(job_id, JobState.COMPLETED, reason="pipeline_complete")
+            fsm.force_transition(job_id, JobState.PRODUCING, reason="production_started")
+            append_completion_event(paths, job_id, "production_started", {"message": "Direct pipeline production completed"})
+            completion = complete_approved_job(
+                paths,
+                job_id,
+                summary,
+                approved_count=None,
+                session_id=session_id,
+            )
+            return {
+                "ok": bool(completion.get("ok")),
+                "message": completion.get("message"),
+                "partlist": completion.get("partlist"),
+                "retrospective": completion.get("retrospective"),
+                "error": completion.get("error"),
+                "job": _job_detail(paths, job_id),
+            }
         else:
+            manual_reviews = summary.get("manual_reviews") if isinstance(summary.get("manual_reviews"), list) else []
+            if manual_reviews:
+                blocked = notify_job_blocked(paths, job_id, reason="pipeline_manual_review_pending", session_id=session_id, summary=summary)
+                return {"ok": False, "error": blocked.get("error"), "message": blocked.get("message"), "job": _job_detail(paths, job_id)}
             fsm.transition(job_id, JobState.FAILED, reason="pipeline_failed")
-        _append_job_event(paths, job_id, "completed", {"status": "completed" if summary.get("ok") else "failed"})
+            _append_job_event(paths, job_id, "failed", {"status": "failed"})
     return {"ok": True, "job": _job_detail(paths, job_id)}
 
 
@@ -472,6 +595,7 @@ async def approve_candidates(job_id: str, request: Request) -> dict[str, Any]:
     job_dir = _require_job(paths, job_id)
     fsm = get_fsm(paths.jobs_output_root)
     payload = await request.json()
+    session_id = _optional_str(payload.get("session_id")) or DEFAULT_MANAGER_SESSION_ID
     rows = _approval_rows(payload, paths, job_id)
     if not rows:
         raise HTTPException(status_code=400, detail="plates or candidate_ids are required")
@@ -487,57 +611,94 @@ async def approve_candidates(job_id: str, request: Request) -> dict[str, Any]:
     }
     (job_dir / "approved_plate_specs.json").write_text(json.dumps(approval, indent=2, ensure_ascii=False), encoding="utf-8")
     fsm.force_transition(job_id, JobState.PRODUCING, reason="manager_approved")
-    _append_job_event(paths, job_id, "started", {"message": "Manager approved candidates", "count": len(validated)})
+    append_completion_event(paths, job_id, "production_started", {"approved_count": len(validated)})
 
     tool = ToolRegistry(paths)
     result = tool.run("run_autocad_job", {"job_id": job_id, "autocad_live_policy": str(payload.get("autocad_live_policy") or "off")})
     if not result.get("ok"):
-        fsm.transition(job_id, JobState.FAILED, reason=result.get("error", "production_failed"))
-        _append_job_event(paths, job_id, "failed", {"error": result.get("error")})
-        return {"ok": False, "error": result.get("error"), "job": _job_detail(paths, job_id)}
+        blocked = notify_job_blocked(
+            paths,
+            job_id,
+            reason=str(result.get("error") or "production_failed"),
+            session_id=session_id,
+            state=JobState.FAILED,
+        )
+        return {"ok": False, "error": blocked.get("error"), "message": blocked.get("message"), "job": _job_detail(paths, job_id)}
     summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
     if summary.get("ok") is not True:
         manual_reviews = summary.get("manual_reviews") if isinstance(summary.get("manual_reviews"), list) else []
-        if manual_reviews:
-            fsm.force_transition(job_id, JobState.AWAITING_APPROVAL, reason="production_manual_review_pending")
-            _append_job_event(
-                paths,
-                job_id,
-                "completed",
-                {"status": "needs_manager_approval", "manual_review_count": len(manual_reviews)},
-            )
-            return {
+        reason = "production_manual_review_pending" if manual_reviews else "qc_failed"
+        append_completion_event(
+            paths,
+            job_id,
+            "qc_completed",
+            {
                 "ok": False,
-                "error": "production_manual_review_pending",
-                "manual_reviews": manual_reviews,
-                "job": _job_detail(paths, job_id),
-            }
-        fsm.transition(job_id, JobState.FAILED, reason="qc_failed")
-        _append_job_event(paths, job_id, "failed", {"error": "QC ok=false", "summary": summary})
-        return {"ok": False, "error": "QC ok=false", "job": _job_detail(paths, job_id)}
-    fsm.transition(job_id, JobState.QC_CHECKING, reason="qc_started")
-    fsm.transition(job_id, JobState.COMPLETED, reason="production_complete")
-    _append_job_event(paths, job_id, "completed", {"status": "completed", "approved_count": len(validated)})
+                "manual_review_count": len(manual_reviews),
+                "produced_count": len(summary.get("produced", [])) if isinstance(summary.get("produced"), list) else 0,
+            },
+        )
+        blocked = notify_job_blocked(paths, job_id, reason=reason, session_id=session_id, summary=summary)
+        return {
+            "ok": False,
+            "error": blocked.get("error"),
+            "message": blocked.get("message"),
+            "manual_reviews": manual_reviews,
+            "job": _job_detail(paths, job_id),
+        }
     poz_nos = [str(p.get("poz_no", "")) for p in validated if isinstance(p, dict)]
     get_audit_logger(paths.workspace_root).log_approval(job_id, "teknik-ofis-muduru", len(validated), poz_nos)
-    record_job_status("completed")
-    return {"ok": True, "job": _job_detail(paths, job_id)}
+    completion = complete_approved_job(
+        paths,
+        job_id,
+        summary,
+        approved_count=len(validated),
+        session_id=session_id,
+    )
+    return {
+        "ok": bool(completion.get("ok")),
+        "message": completion.get("message"),
+        "partlist": completion.get("partlist"),
+        "retrospective": completion.get("retrospective"),
+        "error": completion.get("error"),
+        "job": _job_detail(paths, job_id),
+    }
 
 
 @app.post("/api/jobs/{job_id}/partlist", dependencies=[Depends(require_auth)])
-async def create_partlist_api(job_id: str) -> dict[str, Any]:
+async def create_partlist_api(job_id: str, request: Request) -> dict[str, Any]:
     paths = get_paths()
     job_dir = _require_job(paths, job_id)
     output_dir = paths.jobs_output_root / job_id
+    payload = await _optional_json(request)
+    session_id = _optional_str(payload.get("session_id")) or DEFAULT_MANAGER_SESSION_ID
+    summary = _read_json(output_dir / "job_summary.json")
+    if isinstance(summary, dict):
+        completion = complete_approved_job(
+            paths,
+            job_id,
+            summary,
+            approved_count=None,
+            session_id=session_id,
+        )
+        return {
+            "ok": bool(completion.get("ok")),
+            "message": completion.get("message"),
+            "partlist": completion.get("partlist"),
+            "retrospective": completion.get("retrospective"),
+            "error": completion.get("error"),
+            "job": _job_detail(paths, job_id),
+        }
+
     ensure_autocad_import_path(paths)
     from autocad_mcp.technical_office.partlist import create_partlist
 
-    _append_job_event(paths, job_id, "started", {"message": "Partlist generation requested"})
+    append_completion_event(paths, job_id, "partlist_started", {"message": "Partlist generation requested"})
     result = create_partlist(job_dir, output_dir)
-    _append_job_event(
+    append_completion_event(
         paths,
         job_id,
-        "completed" if result.ok else "failed",
+        "partlist_completed",
         {"stage": "partlist", "partlist": result.to_dict()},
     )
     partlist_dict = result.to_dict()
@@ -548,7 +709,17 @@ async def create_partlist_api(job_id: str) -> dict[str, Any]:
     )
     if result.ok:
         record_job_status("partlist_ok")
-    return {"ok": result.ok, "partlist": partlist_dict, "job": _job_detail(paths, job_id)}
+    completion = backfill_job_learning(paths, job_id, dry_run=False, session_id=session_id)
+    if not result.ok:
+        record_job_status("awaiting_approval")
+    return {
+        "ok": bool(completion.get("ok")),
+        "message": completion.get("message"),
+        "partlist": partlist_dict,
+        "retrospective": completion.get("retrospective"),
+        "error": completion.get("error") or (None if result.ok else "partlist_failed"),
+        "job": _job_detail(paths, job_id),
+    }
 
 
 @app.get("/api/events/{job_id}")
@@ -616,6 +787,41 @@ def _history(messages: Any) -> list[dict[str, str]]:
         if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
             history.append({"role": role, "content": content})
     return history
+
+
+def _manager_incoming_history(messages: Any, current_message: str) -> list[dict[str, str]]:
+    if not isinstance(messages, list):
+        return []
+    history: list[dict[str, str]] = []
+    for item in messages:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = item.get("content")
+        if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
+            history.append({"role": role, "content": content})
+    if history and history[-1]["role"] == "user" and history[-1]["content"].strip() == current_message.strip():
+        history = history[:-1]
+    return history
+
+
+def _manager_structured_trigger(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    trigger_type = _optional_str(value.get("type"))
+    if not trigger_type:
+        return None
+    trigger: dict[str, Any] = {"type": trigger_type}
+    job_id = _optional_str(value.get("job_id"))
+    if job_id:
+        trigger["job_id"] = job_id
+    validation_errors = value.get("validation_errors")
+    if isinstance(validation_errors, list):
+        trigger["validation_errors"] = [dict(item) for item in validation_errors if isinstance(item, dict)]
+    candidate_ids = value.get("candidate_ids")
+    if isinstance(candidate_ids, list):
+        trigger["candidate_ids"] = [str(item) for item in candidate_ids if item is not None]
+    return trigger
 
 
 def _content_part_text(part: Any) -> str:
@@ -749,6 +955,37 @@ def _list_job_records(paths: RuntimePaths) -> list[dict[str, Any]]:
     return [{"job_id": path.name} for path in sorted(paths.jobs_import_root.iterdir()) if path.is_dir()]
 
 
+def _reconcile_manual_reviews(output_dir: Path) -> list[dict[str, Any]]:
+    """Codex adayı veya sayfa dışlaması olan review'ları aktif listeden çıkar."""
+    reviews = _read_json(output_dir / "manual_review_required.json") or []
+    if not isinstance(reviews, list) or not reviews:
+        return []
+    candidates_data = _read_json(output_dir / "codex_candidates.json") or {}
+    exclusions = _read_json(output_dir / "page_exclusions_applied.json") or {}
+    covered: set[tuple[str | None, int]] = {
+        (c.get("source_pdf"), int(c["source_page"]))
+        for c in (candidates_data.get("candidates") or [])
+        if isinstance(c, dict) and c.get("source_page") is not None
+    }
+    excluded_pages: set[int] = {
+        int(e["page"])
+        for e in (exclusions.get("excluded_pages") or [])
+        if isinstance(e, dict) and e.get("page") is not None
+    }
+    active = []
+    for r in reviews:
+        if not isinstance(r, dict):
+            continue
+        page = r.get("page")
+        pdf = r.get("source_pdf")
+        if page is not None and int(page) in excluded_pages:
+            continue
+        if page is not None and ((pdf, int(page)) in covered or (None, int(page)) in covered):
+            continue
+        active.append(r)
+    return active
+
+
 def _job_detail(paths: RuntimePaths, job_id: str, *, shallow: bool = False) -> dict[str, Any]:
     job_dir = paths.jobs_import_root / job_id
     output_dir = paths.jobs_output_root / job_id
@@ -756,6 +993,7 @@ def _job_detail(paths: RuntimePaths, job_id: str, *, shallow: bool = False) -> d
     manual_reviews = summary.get("manual_reviews")
     produced = summary.get("produced")
     fsm_state = get_fsm(paths.jobs_output_root).get_state(job_id).value
+    active_reviews = _reconcile_manual_reviews(output_dir)
     detail: dict[str, Any] = {
         "job_id": job_id,
         "status": _job_status(job_dir, output_dir, summary),
@@ -765,6 +1003,8 @@ def _job_detail(paths: RuntimePaths, job_id: str, *, shallow: bool = False) -> d
         "project_name": (_read_json(job_dir / "job.json") or {}).get("project_name"),
         "pdf_count": len(list(job_dir.glob("*.pdf"))) if job_dir.exists() else 0,
         "manual_review_count": len(manual_reviews) if isinstance(manual_reviews, list) else 0,
+        "active_manual_review_count": len(active_reviews),
+        "active_manual_reviews": active_reviews,
         "produced_count": len(produced) if isinstance(produced, list) else 0,
         "qc_failed": _has_failed_qc(summary),
     }
@@ -845,11 +1085,14 @@ async def _required_json_object(request: Request) -> dict[str, Any]:
     return payload
 
 
+_VISUAL_REVIEW_REASONS = {"visual_text_required", "text_layer_unreadable", "plate_geometry_not_found"}
+
+
 def _summary_requires_visual_candidates(summary: dict[str, Any]) -> bool:
     reviews = summary.get("manual_reviews")
     if not isinstance(reviews, list):
         return False
-    return any(isinstance(item, dict) and item.get("reason") in {"visual_text_required", "text_layer_unreadable"} for item in reviews)
+    return any(isinstance(item, dict) and item.get("reason") in _VISUAL_REVIEW_REASONS for item in reviews)
 
 
 def _extract_codex_candidates(paths: RuntimePaths, job_id: str) -> dict[str, Any]:
@@ -858,10 +1101,16 @@ def _extract_codex_candidates(paths: RuntimePaths, job_id: str) -> dict[str, Any
     pdf_names = [
         item.get("source_pdf")
         for item in diagnostics.get("pdfs", [])
-        if isinstance(item, dict) and item.get("classification") in {"visual_text_required", "text_layer_unreadable"}
+        if isinstance(item, dict) and item.get("classification") in _VISUAL_REVIEW_REASONS
     ]
+    exclusions = _read_json(output_dir / "page_exclusions_applied.json") or {}
+    excluded_pages: set[int] = {
+        int(e["page"])
+        for e in (exclusions.get("excluded_pages") or [])
+        if isinstance(e, dict) and e.get("page") is not None
+    }
     try:
-        images = _render_candidate_pages(paths, job_id, [str(name) for name in pdf_names if name])
+        images = _render_candidate_pages(paths, job_id, [str(name) for name in pdf_names if name], excluded_pages=excluded_pages)
     except RuntimeError as exc:
         return {"ok": False, "error": str(exc)}
     if not images:
@@ -902,7 +1151,13 @@ def _extract_codex_candidates(paths: RuntimePaths, job_id: str) -> dict[str, Any
     return {"ok": True, "count": len(normalized)}
 
 
-def _render_candidate_pages(paths: RuntimePaths, job_id: str, pdf_names: list[str]) -> list[Path]:
+def _render_candidate_pages(
+    paths: RuntimePaths,
+    job_id: str,
+    pdf_names: list[str],
+    *,
+    excluded_pages: set[int] | None = None,
+) -> list[Path]:
     try:
         import fitz  # type: ignore[import-not-found]
     except Exception as exc:
@@ -910,6 +1165,7 @@ def _render_candidate_pages(paths: RuntimePaths, job_id: str, pdf_names: list[st
     run_id = f"{job_id}-{uuid.uuid4().hex[:8]}"
     pages_dir = paths.suite_root / ".state" / "codex-runs" / run_id / "pages"
     pages_dir.mkdir(parents=True, exist_ok=True)
+    _excluded = excluded_pages or set()
     images: list[Path] = []
     for pdf_name in pdf_names:
         pdf_path = paths.jobs_import_root / job_id / _safe_pdf_name(pdf_name)
@@ -919,6 +1175,8 @@ def _render_candidate_pages(paths: RuntimePaths, job_id: str, pdf_names: list[st
         try:
             doc = fitz.open(pdf_path)
             for page_index, page in enumerate(doc, start=1):
+                if page_index in _excluded:
+                    continue
                 if len(images) >= VISUAL_CANDIDATE_MAX_PAGES:
                     raise RuntimeError(
                         f"Visual analysis render limit exceeded ({VISUAL_CANDIDATE_MAX_PAGES} pages). "
@@ -1115,7 +1373,19 @@ def _validate_approved_rows(rows: list[dict[str, Any]], paths: RuntimePaths, job
                 unit_weight_kg=_optional_float(row.get("unit_weight_kg")),
                 holes=[HoleSpec(x=_required_float(item, "x"), y=_required_float(item, "y"), diameter=_required_float(item, "diameter")) for item in row.get("holes", []) if isinstance(item, dict)],
                 slots=[SlotSpec(x=_required_float(item, "x"), y=_required_float(item, "y"), length=_required_float(item, "length"), width=_required_float(item, "width"), rotation_deg=_optional_float(item.get("rotation_deg")) or 0.0) for item in row.get("slots", []) if isinstance(item, dict)],
-                corner_reliefs=[CornerReliefSpec(corner=_required_text(item, "corner"), radius=_required_float(item, "radius"), relief_type=_normalize_relief_type(str(item.get("relief_type") or "round"))) for item in row.get("corner_reliefs", []) if isinstance(item, dict)],
+                corner_reliefs=[
+                    CornerReliefSpec(
+                        corner=_required_text(item, "corner"),
+                        radius=_required_float(item, "radius"),
+                        relief_type=_normalize_relief_type(str(item.get("relief_type") or item.get("type") or "round")),
+                        x_offset=_optional_float(item.get("x_offset")),
+                        y_offset=_optional_float(item.get("y_offset")),
+                    )
+                    for item in row.get("corner_reliefs", [])
+                    if isinstance(item, dict)
+                    and _normalize_relief_type(str(item.get("relief_type") or item.get("type") or "")) != "polygon_contour"
+                    and item.get("corner")  # polygon_contour sentinel'inin corner alanı yoktur
+                ],
                 source_page=int(row["source_page"]) if row.get("source_page") not in (None, "") else None,
                 confidence=_optional_float(row.get("confidence")) or 1.0,
                 notes=["manager_approved_from_visual_candidate"],
@@ -1191,7 +1461,7 @@ def _normalize_relief_type(value: str) -> str:
     normalized = value.strip().lower()
     if normalized in {"pah", "bevel", "beveled", "chamfered"}:
         return "chamfer"
-    if normalized in {"rounded", "radius"}:
+    if normalized in {"round_relief", "rounded", "radius"}:
         return "round"
     return normalized or "round"
 
@@ -1249,13 +1519,35 @@ def _save_turn(
                 user_text=user_text,
                 assistant_text=content,
                 selected_job_id=selected_job_id,
+                history=history,
             )
         except Exception:
             pass
 
 
+def _save_assistant_turn(
+    paths: RuntimePaths,
+    session_id: str,
+    history: list[dict[str, Any]],
+    content: str,
+) -> None:
+    save_session(
+        paths.sessions_root,
+        session_id,
+        history + [{"role": "assistant", "content": content, "timestamp": _now_ms()}],
+    )
+
+
 def _append_job_event(paths: RuntimePaths, job_id: str, event_type: str, payload: dict[str, Any]) -> None:
-    if event_type not in JOB_STATUS_VALUES and event_type not in {"started", "delta", "candidate", "failed", "completed", "codex_extracting"}:
+    stage_events = {
+        "production_started",
+        "qc_completed",
+        "partlist_started",
+        "partlist_completed",
+        "retrospective_written",
+        "manager_notification",
+    }
+    if event_type not in JOB_STATUS_VALUES and event_type not in {"started", "delta", "candidate", "failed", "completed", "codex_extracting"} | stage_events:
         event_type = "delta"
     path = _event_log_path(paths, job_id)
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -15,6 +15,11 @@ from autocad_mcp.technical_office.job_metadata import upsert_job_metadata
 from autocad_mcp.technical_office.models import PlateSpec
 from autocad_mcp.technical_office.naming import safe_name
 from autocad_mcp.technical_office.nc1_writer import write_plate_nc1
+from autocad_mcp.technical_office.page_exclusions import (
+    excluded_page_records,
+    filter_excluded_pages,
+    load_page_exclusions,
+)
 from autocad_mcp.technical_office.pdf_diagnostics import (
     PdfDiagnostics,
     build_extraction_candidates,
@@ -73,16 +78,24 @@ def run_job(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     positions = load_position_records(root)
+    page_exclusions = load_page_exclusions(root)
     approved_specs = load_approved_plate_specs(root)
+    input_pdf_names = {pdf.name for pdf in input_pdfs}
+    single_input_pdf = input_pdfs[0].name if len(input_pdfs) == 1 else None
     manual_reviews: list[dict[str, Any]] = []
     produced: list[ProducedPlate] = []
     diagnostics: list[PdfDiagnostics] = []
     extraction_candidates: list[dict[str, Any]] = []
+    applied_page_exclusions: list[dict[str, Any]] = []
 
     for pdf in input_pdfs:
-        extraction = extract_pdf_content(pdf)
-        pdf_diagnostics = build_pdf_diagnostics(pdf, extraction)
+        raw_extraction = extract_pdf_content(pdf)
+        pdf_diagnostics = build_pdf_diagnostics(pdf, raw_extraction)
         diagnostics.append(pdf_diagnostics)
+        applied_page_exclusions.extend(
+            excluded_page_records(raw_extraction.pages, page_exclusions, source_pdf=pdf.name)
+        )
+        extraction = filter_excluded_pages(raw_extraction, page_exclusions, source_pdf=pdf.name)
         extraction_candidates.extend(build_extraction_candidates(pdf, extraction, pdf_diagnostics))
 
         if approved_specs:
@@ -115,11 +128,14 @@ def run_job(
         manual_reviews.extend(geometry_reviews)
         geometry_reviews_by_poz = _reviews_by_poz(geometry_reviews)
         for approved in approved_specs:
+            source_pdf = approved.source_pdf
+            if single_input_pdf and source_pdf not in input_pdf_names:
+                source_pdf = single_input_pdf
             produced.append(
                 _produce_plate(
                     approved.spec,
                     output_dir,
-                    source_pdf=approved.source_pdf,
+                    source_pdf=source_pdf,
                     autocad_live_policy=autocad_live_policy,
                     live_validator=live_validator,
                     blocking_reviews=geometry_reviews_by_poz.get(approved.spec.poz_no, []),
@@ -134,6 +150,22 @@ def run_job(
         json.dumps(candidates_report(job_id, extraction_candidates), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+    exclusions_path = output_dir / "page_exclusions_applied.json"
+    if applied_page_exclusions:
+        exclusions_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "job_id": job_id,
+                    "excluded_pages": applied_page_exclusions,
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    else:
+        exclusions_path.unlink(missing_ok=True)
 
     if manual_reviews:
         (output_dir / "manual_review_required.json").write_text(
@@ -166,8 +198,12 @@ def _manual_reviews_for_approved_visual_scope(
     reviews: list[dict[str, Any]] = []
     approved_pages_by_pdf: dict[str, set[int]] = {}
     unknown_pages_by_pdf: dict[str, int] = {}
+    diagnostic_pdf_names = {item.source_pdf for item in diagnostics}
+    single_diagnostic_pdf = diagnostics[0].source_pdf if len(diagnostics) == 1 else None
     for approved in approved_specs:
         source_pdf = approved.source_pdf
+        if single_diagnostic_pdf and source_pdf not in diagnostic_pdf_names:
+            source_pdf = single_diagnostic_pdf
         page = approved.spec.source_page
         if page is None:
             unknown_pages_by_pdf[source_pdf] = unknown_pages_by_pdf.get(source_pdf, 0) + 1
@@ -229,6 +265,8 @@ def _manual_reviews_for_open_manager_geometry_notes(
         affected = [str(poz) for poz in note.get("affected_pozs", []) if str(poz) in approved_by_poz]
         for poz_no in affected:
             approved = approved_by_poz[poz_no]
+            if approved.spec.corner_reliefs:
+                continue
             reviews.append(
                 {
                     "reason": "manager_geometry_issue_open",

@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:codex-manual-review-check",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hangi pozlar icin manuel inceleme belirledin",
+      "timestamp": 1778653727667
+    },
+    {
+      "role": "assistant",
+      "content": "`danieli-1701` manuel inceleme kayitlari:\n- FSM: completed\n- Job sonucu: ok=true\n- Ana liste: workspace/outputs/jobs/danieli-1701/manual_review_required.json\n- Mudur notlari: workspace/outputs/jobs/danieli-1701/manager_issue_notes.jsonl\n- Poz QC dosyalari: workspace/outputs/jobs/danieli-1701/<poz>/<poz>_qc.json\nAktif `manual_review_required` maddesi yok.\nKarar: Mevcut ozet dosyasina gore manuel inceleme kapanmis gorunuyor.",
+      "timestamp": 1778653727667
+    }
+  ]
+}

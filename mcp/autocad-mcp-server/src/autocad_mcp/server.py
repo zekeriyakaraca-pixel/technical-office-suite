@@ -50,16 +50,18 @@ async def drawing(
     """Drawing file management.
 
     Operations:
-      create     — Create a new empty drawing. data: {name?}
-      open       — Open an existing drawing. data: {path}
-      info       — Get drawing extents, entity count, layers, blocks.
-      save       — Save current drawing. data: {path?} (saves to path if given, else QSAVE)
-      save_as_dxf — Export as DXF. data: {path}
-      plot_pdf   — Plot to PDF. data: {path}
-      purge      — Purge unused objects.
+      create        — Create a new empty drawing. data: {name?}
+      open          — Open an existing drawing. data: {path}
+      info          — Get drawing extents, entity count, layers, blocks.
+      save          — Save current drawing. data: {path?} (saves to path if given, else QSAVE)
+      save_as_dxf   — Export as DXF. data: {path}
+      plot_pdf      — Plot to PDF. data: {path}
+      purge         — Purge unused objects.
       get_variables — Get system variables. data: {names: [...]}
-      undo       — Undo last operation.
-      redo       — Redo last undone operation.
+      list_layouts  — List all paper space layouts.
+      get_extents   — Get model space bounding box.
+      undo          — Undo last operation.
+      redo          — Redo last undone operation.
     """
     data = data or {}
     backend = await get_backend()
@@ -80,6 +82,10 @@ async def drawing(
         result = await backend.drawing_get_variables(data.get("names"))
     elif operation == "open":
         result = await backend.drawing_open(data["path"])
+    elif operation == "list_layouts":
+        result = await backend.drawing_list_layouts()
+    elif operation == "get_extents":
+        result = await backend.drawing_get_extents()
     elif operation == "undo":
         result = await backend.undo()
     elif operation == "redo":
@@ -120,23 +126,28 @@ async def entity(
       create_ellipse    — data: {cx, cy, major_x, major_y, ratio}, layer?
       create_mtext      — data: {x, y, width, text, height?}, layer?
       create_hatch      — entity_id, data: {pattern?}
+      create_spline     — points: [[x,y],...], layer?
 
     Read operations:
       list              — layer? → list entities
       count             — layer? → count entities
       get               — entity_id → entity details
+      query             — data: {type?, layer?} → filtered entity list
 
     Modify operations:
-      copy    — entity_id, data: {dx, dy}
-      move    — entity_id, data: {dx, dy}
-      rotate  — entity_id, data: {cx, cy, angle}
-      scale   — entity_id, data: {cx, cy, factor}
-      mirror  — entity_id, x1, y1, x2, y2
-      offset  — entity_id, data: {distance}
-      array   — entity_id, data: {rows, cols, row_dist, col_dist}
-      fillet  — data: {id1, id2, radius}
-      chamfer — data: {id1, id2, dist1, dist2}
-      erase   — entity_id
+      copy              — entity_id, data: {dx, dy}
+      move              — entity_id, data: {dx, dy}
+      rotate            — entity_id, data: {cx, cy, angle}
+      scale             — entity_id, data: {cx, cy, factor}
+      mirror            — entity_id, x1, y1, x2, y2
+      offset            — entity_id, data: {distance}
+      array             — entity_id, data: {rows, cols, row_dist, col_dist}
+      fillet            — data: {id1, id2, radius}
+      chamfer           — data: {id1, id2, dist1, dist2}
+      set_properties    — entity_id, data: {layer?, color?, linetype?, lineweight?}
+      erase             — entity_id
+      erase_many        — data: {ids: [...]}
+      explode           — entity_id
     """
     data = data or {}
     backend = await get_backend()
@@ -186,6 +197,16 @@ async def entity(
         result = await backend.entity_chamfer(data["id1"], data["id2"], data["dist1"], data["dist2"])
     elif operation == "erase":
         result = await backend.entity_erase(entity_id)
+    elif operation == "erase_many":
+        result = await backend.entity_erase_many(data.get("ids", []))
+    elif operation == "explode":
+        result = await backend.entity_explode(entity_id)
+    elif operation == "set_properties":
+        result = await backend.entity_set_properties(entity_id, data)
+    elif operation == "query":
+        result = await backend.entity_query(data)
+    elif operation == "create_spline":
+        result = await backend.create_spline(points or [], layer)
     else:
         return _json({"error": f"Unknown entity operation: {operation}"})
 
@@ -215,6 +236,7 @@ async def layer(
       thaw            — data: {name}
       lock            — data: {name}
       unlock          — data: {name}
+      delete          — data: {name}
     """
     data = data or {}
     backend = await get_backend()
@@ -235,6 +257,8 @@ async def layer(
         result = await backend.layer_lock(data["name"])
     elif operation == "unlock":
         result = await backend.layer_unlock(data["name"])
+    elif operation == "delete":
+        result = await backend.layer_delete(data["name"])
     else:
         return _json({"error": f"Unknown layer operation: {operation}"})
 
@@ -305,12 +329,13 @@ async def annotation(
     """Annotation: text, dimensions, and leaders.
 
     Operations:
-      create_text             — data: {x, y, text, height?, rotation?, layer?}
-      create_dimension_linear — data: {x1, y1, x2, y2, dim_x, dim_y}
+      create_text              — data: {x, y, text, height?, rotation?, layer?}
+      create_dimension_linear  — data: {x1, y1, x2, y2, dim_x, dim_y}
       create_dimension_aligned — data: {x1, y1, x2, y2, offset}
       create_dimension_angular — data: {cx, cy, x1, y1, x2, y2}
-      create_dimension_radius — data: {cx, cy, radius, angle}
-      create_leader           — data: {points: [[x,y],...], text}
+      create_dimension_radius  — data: {cx, cy, radius, angle}
+      create_leader            — data: {points: [[x,y],...], text}
+      create_mleader           — data: {points: [[x,y],...], text, layer?}
     """
     data = data or {}
     backend = await get_backend()
@@ -338,6 +363,8 @@ async def annotation(
         )
     elif operation == "create_leader":
         result = await backend.create_leader(data["points"], data["text"])
+    elif operation == "create_mleader":
+        result = await backend.create_mleader(data["points"], data["text"], data.get("layer"))
     else:
         return _json({"error": f"Unknown annotation operation: {operation}"})
 

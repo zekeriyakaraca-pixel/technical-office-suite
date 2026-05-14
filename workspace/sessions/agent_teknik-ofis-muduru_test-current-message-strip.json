@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:test-current-message-strip",
+  "messages": [
+    {
+      "role": "user",
+      "content": "1. adimdan baslayalim",
+      "timestamp": 1778754026492
+    },
+    {
+      "role": "assistant",
+      "content": "Mudur cevabi",
+      "timestamp": 1778754026492
+    }
+  ]
+}

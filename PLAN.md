@@ -1,58 +1,54 @@
-# Technical Office Codex Runtime Plan
+# Dashboard Pipeline ve Görsel Analiz Akışı Düzeltmesi
 
 ## Summary
-Active product target is the FastAPI runtime in `runtime/technical_office_runtime` plus the deterministic AutoCAD MCP technical office pipeline. The legacy `apps/office3d` application stays parked, and no new frontend app is created under `apps/`.
-
-Codex CLI is the only active AI agent engine. PDF diagnostics, DXF, NC1, QC, and ERT partlist generation remain deterministic Python pipeline work. Codex CLI is used for substantive manager chat and visual PDF candidate extraction after local PDF pages are rendered to images; lightweight greetings/status prompts are answered locally to keep the dashboard responsive.
-
-## Active Architecture
-- Runtime API and dashboard: `runtime/technical_office_runtime`
-- AutoCAD/headless production pipeline: `mcp/autocad-mcp-server/src/autocad_mcp/technical_office`
-- Workspace input: `workspace/imports/jobs/<job_id>/`
-- Workspace output: `workspace/outputs/jobs/<job_id>/`
-- Codex run state: `.state/codex-runs/`
-- Codex-compatible skills: `agents/_shared/codex-skills/<skill>/SKILL.md`
+Sorun üç parçalı: Pipeline butonu deterministik blokajda görsel analizi otomatik tamamlamıyor, müdür chat eski/stale iş bağlamını gereksiz konuşuyor, görsel analiz aday ürettikten sonra `manual_review_required.json` hâlâ eski `plate_geometry_not_found` kayıtlarını aktif gösteriyor. Düzeltme, mevcut senkron akışı koruyacak ama pipeline/run, chat ve UI durum göstergelerini tek tutarlı iş akışına bağlayacak.
 
 ## Key Changes
-- Keep the current FastAPI dashboard and extend it with PDF preview, live event stream, editable visual candidates, output downloads, QC status, and partlist generation.
-- Use `PyMuPDF` in the runtime to render unreadable PDF pages before Codex visual candidate extraction.
-- Stream `codex.cmd exec --json` output into job events while Codex runs.
-- Keep `/api/events/{job_id}` as a server-sent event stream that replays existing events and tails new ones until completion or failure.
-- Add `/api/jobs/{job_id}/partlist` to create ERT Excel only from QC `ok=true` rows.
-- Use `scripts/toffice.ps1 doctor` and `scripts/codex-mcp.ps1` to validate Codex CLI and detect stale global `autocad-mcp` paths.
+- Pipeline butonu `/api/jobs/{job_id}/run` üzerinden tam akış çalıştıracak:
+  - Deterministik pipeline çalışır.
+  - `plate_geometry_not_found` gibi görsel adayla çözülebilecek manuel incelemeler varsa, müdür notu/soru oluşturmadan önce otomatik Codex görsel aday taraması başlatılır.
+  - Görsel analiz bitmeden `notify_job_blocked`, manager notification veya “ne yapmak istersin?” sorusu oluşmaz.
+  - Görsel adaylar üretildiyse iş `awaiting_approval` durumunda kalır; DXF/NC1 üretimi yine ancak müdür onayından sonra yapılır.
+  - Görsel analiz hiç aday çıkaramazsa veya kapsanmayan gerçek sayfalar kalırsa ancak o zaman manuel inceleme notu/blokaj yazılır.
 
-## API Surface
-- `POST /api/jobs`: upload one or more PDFs and create a job.
-- `GET /api/jobs`: list jobs and status.
-- `GET /api/jobs/{job_id}`: inspect metadata, PDFs, diagnostics, candidates, approvals, outputs, partlist, and events.
-- `GET /api/jobs/{job_id}/files/{filename}`: download input PDFs or output files.
-- `POST /api/jobs/{job_id}/run`: run deterministic diagnostics/pipeline and Codex visual candidate extraction when required.
-- `POST /api/jobs/{job_id}/approve-candidates`: write manager-approved `PlateSpec` rows and run production.
-- `POST /api/jobs/{job_id}/partlist`: create or block the ERT partlist based on QC/manual-review gates.
-- `GET /api/events/{job_id}`: live SSE job event stream.
-- `POST /api/manager/chat`: manager-only chat with local lightweight responses and Codex CLI for substantive reasoning.
+- Görsel analiz sonrası manuel inceleme temizliği:
+  - Yeni bir reconciliation helper eklenecek: `manual_review_required` kayıtlarını mevcut `codex_candidates` ile karşılaştıracak.
+  - Aynı PDF + sayfa + poz için aday üretildiyse o `plate_geometry_not_found` artık aktif manuel inceleme sayılmayacak.
+  - `page_exclusions.json` ile atlanan sayfalar eksik görsel aday sayfası sayılmayacak.
+  - `job_summary.json`, `manual_review_required.json` ve job detail cevapları aynı aktif manuel inceleme sayısını gösterecek.
+  - Mevcut `d-28-20260513155258` işi de bu yeni okuma/yenileme mantığıyla 29 eski blokajı aktif göstermeye devam etmeyecek; sadece gerçekten çözülemeyen sayfalar kalacak.
 
-## Codex CLI Compatibility
-Codex CLI does not use this repo's `.mcp.json` as its source of truth. It reads Codex global MCP configuration. The runtime therefore checks:
+- Müdür chat davranışı:
+  - `nasılsın`, `merhaba`, `selam` gibi hafif sohbetler iş bağlamı taşımayacak; seçili job olsa bile otomatik uzun iş özeti veya eski hata anlatmayacak.
+  - “Görsel analizden devam edelim” cevabı tamamlanmış senkron sonucu doğru anlatacak: “başlatıldı” değil, “tamamlandı / aday üretildi / şu kadar kayıt aktif kaldı”.
+  - “Görünen manuel inceleme nedir?” cevabı stale dosyayı değil, reconciliation sonrası aktif kayıtları gösterecek.
+  - Görsel analiz sonucu aday üretilmiş pozlar manuel inceleme listesinde “aktif blokaj” olarak dönmeyecek.
 
-```powershell
-codex.cmd --version
-codex.cmd exec --help
-codex.cmd mcp list
-codex.cmd mcp get autocad-mcp
-```
-
-If `autocad-mcp` points to an old machine-specific path, the doctor prints manual fix commands. Global Codex config is not changed automatically.
+- UI ve event stream:
+  - Görsel analiz sırasında FSM `extracting` olacak; header’daki `Aktif iş` sayacı ve iş pill’i bunu gösterecek.
+  - Eski `completed: needs_manager_approval` event’i EventSource bağlantısını öldürmeyecek; aynı işte sonradan gelen görsel analiz/aday event’leri canlı görünecek.
+  - Chat cevabı veya pipeline cevabı geldikten sonra seçili job detayı, aday listesi, çıktı listesi, iş listesi ve sistem sayaçları otomatik yenilenecek.
+  - Pipeline butonu mesajı sonuç tipine göre değişecek: aday bekliyorsa “Görsel adaylar hazır, onay bekliyor”; gerçek tamamlandıysa “Pipeline tamamlandı”.
 
 ## Test Plan
-- Runtime tests: `uv run --project runtime --extra dev pytest runtime/tests -q`
-- MCP pipeline tests: `uv run --project mcp/autocad-mcp-server --extra dev pytest mcp/autocad-mcp-server/tests/test_technical_office_pipeline.py -q`
-- Smoke check: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke.ps1`
-- Doctor check: `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\toffice.ps1 doctor`
+- Runtime API testleri:
+  - `/api/jobs/{job_id}/run`, `plate_geometry_not_found` manuel incelemede önce görsel analiz dener; analiz denenmeden manager notification yazmaz.
+  - Görsel aday üretilen sayfalarda manual review aktif listeden düşer.
+  - Page exclusion uygulanan sayfalar eksik aday kapsamına girmez.
+  - Görsel aday varsa FSM sonucu `awaiting_approval`, aktif işlem sırasında `extracting` olur.
 
-Acceptance criteria:
-- Runtime and MCP tests pass.
-- Codex executable, login, and `codex exec` help are ready.
-- Codex MCP doctor rejects stale `Technical_office_engineer` paths.
-- PDF visual candidate rendering works through `PyMuPDF`.
-- Partlist is blocked until QC `ok=true` rows exist.
+- Orchestrator/chat testleri:
+  - `nasılsın` hafif sohbet olarak kalır, seçili iş özetini veya eski Codex hata bilgisini dökmez.
+  - `görsel analizden devam edelim` cevabında “başlatıldı” yerine tamamlanan analiz sonucu ve kalan aktif blokaj sayısı bulunur.
+  - Manuel inceleme detay cevabı reconciliation sonrası listeyi kullanır.
+
+- Dashboard testleri:
+  - HTML içinde chat/pipeline sonrası seçili job refresh helper’ı bulunur.
+  - EventSource eski `needs_manager_approval` completed event’inde kapanmaz.
+  - Pipeline butonu action message’ları aday/onay/tamamlandı durumlarını ayırır.
+
+## Assumptions
+- Görsel analiz ayrı background queue’ya taşınmayacak; mevcut senkron istek modeli korunacak.
+- Görsel analiz aday üretse bile sistem otomatik onay/üretim yapmayacak; müdür onayı zorunlu kalacak.
+- `plate_geometry_not_found` görsel adayla çözülebilir kabul edilecek; görsel analizden sonra hâlâ adayı olmayan gerçek plaka sayfaları aktif manuel inceleme olarak kalacak.
+- Atlanmış kapak/profil sayfaları tekrar görsel analiz hedefi veya eksik aday sayfası yapılmayacak.

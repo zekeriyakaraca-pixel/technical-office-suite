@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -148,7 +149,12 @@ def test_dashboard_root_renders_2d_runtime():
     assert "PDF Onizleme" in response.text
     assert "Secili Adaylari Onayla" in response.text
     assert "Partlist Uret" in response.text
+    assert "Learning Health" in response.text
+    assert "/api/learning/health" in response.text
+    assert "/api/learning/backfill" in response.text
     assert "managerHistory" in response.text
+    assert "loadManagerSession" in response.text
+    assert "/sessions/history" in response.text
     assert "Mudur dusunuyor" in response.text
     assert "AbortController" in response.text
     assert "CHAT_TIMEOUT_MS = 210000" in response.text
@@ -160,7 +166,7 @@ def test_manager_chat_persists_dashboard_session(monkeypatch):
         def __init__(self, *args, **kwargs):
             pass
 
-        def run(self, message, history=None):
+        def run(self, message, history=None, **kwargs):
             return type(
                 "Result",
                 (),
@@ -189,12 +195,48 @@ def test_manager_chat_persists_dashboard_session(monkeypatch):
     assert [message["role"] for message in history["messages"][-2:]] == ["user", "assistant"]
 
 
+def test_manager_chat_strips_current_message_from_incoming_history(monkeypatch):
+    class FakeOrchestrator:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def run(self, message, history=None, **kwargs):
+            assert history == []
+            return type(
+                "Result",
+                (),
+                {
+                    "content": "Mudur cevabi",
+                    "used_llm": True,
+                    "fallback_reason": None,
+                    "tool_results": [],
+                },
+            )()
+
+    monkeypatch.setattr("technical_office_runtime.app.AgentOrchestrator", FakeOrchestrator)
+    session_id = "agent:teknik-ofis-muduru:test-current-message-strip"
+    client.post("/sessions/reset", json={"session_id": session_id})
+
+    response = client.post(
+        "/api/manager/chat",
+        json={
+            "message": "1. adimdan baslayalim",
+            "session_id": session_id,
+            "history": [{"role": "user", "content": "1. adimdan baslayalim"}],
+        },
+    )
+
+    assert response.status_code == 200
+    history = client.get("/sessions/history", params={"session_id": session_id}).json()["messages"]
+    assert [message["role"] for message in history] == ["user", "assistant"]
+
+
 def test_manager_memory_endpoint_exposes_persisted_turn(monkeypatch):
     class FakeOrchestrator:
         def __init__(self, *args, **kwargs):
             pass
 
-        def run(self, message, history=None):
+        def run(self, message, history=None, **kwargs):
             return type(
                 "Result",
                 (),
@@ -244,11 +286,21 @@ def test_manager_chat_rejects_non_utf8_json_without_500():
 
 def test_jobs_api_upload_detail_and_run():
     job_id = "api-upload-test"
+    session_id = "agent:teknik-ofis-muduru:test-direct-run"
     suite_root = Path(__file__).resolve().parents[2]
     job_dir = suite_root / "workspace" / "imports" / "jobs" / job_id
     output_dir = suite_root / "workspace" / "outputs" / "jobs" / job_id
+    session_file = suite_root / "workspace" / "sessions" / "agent_teknik-ofis-muduru_test-direct-run.json"
+    vault_file = suite_root / "workspace" / "manager_vault" / "jobs" / "api-upload-test.md"
+    proposal_dir = suite_root / "journal" / "skill_proposals"
     _cleanup_dir(job_dir)
     _cleanup_dir(output_dir)
+    if session_file.exists():
+        session_file.unlink()
+    if vault_file.exists():
+        vault_file.unlink()
+    for path in proposal_dir.glob("*api-upload-test_auto_close.md"):
+        path.unlink()
 
     response = client.post(
         "/api/jobs",
@@ -262,23 +314,41 @@ def test_jobs_api_upload_detail_and_run():
     assert payload["job"]["job_id"] == job_id
     assert payload["job"]["pdf_count"] == 1
 
-    run = client.post(f"/api/jobs/{job_id}/run", json={"autocad_live_policy": "off"})
+    run = client.post(f"/api/jobs/{job_id}/run", json={"autocad_live_policy": "off", "session_id": session_id})
     assert run.status_code == 200
     detail = run.json()["job"]
     assert detail["summary"]["ok"] is True
     assert detail["produced_count"] == 1
     assert detail["fsm_state"] == "completed"
+    assert detail["partlist"]["ok"] is True
+    assert (output_dir / "retrospective.json").exists()
     assert detail["pdfs"][0]["download_url"].endswith("/api/jobs/api-upload-test/files/input.pdf")
     assert detail["pdfs"][0]["preview_url"].endswith("/api/jobs/api-upload-test/files/input.pdf?inline=true")
+    for path in proposal_dir.glob("*api-upload-test_auto_close.md"):
+        path.unlink()
+    if session_file.exists():
+        session_file.unlink()
+    if vault_file.exists():
+        vault_file.unlink()
 
 
 def test_approve_candidates_validates_before_writing_specs():
     job_id = "api-approval-test"
+    session_id = "agent:teknik-ofis-muduru:test-auto-close"
     suite_root = Path(__file__).resolve().parents[2]
     job_dir = suite_root / "workspace" / "imports" / "jobs" / job_id
     output_dir = suite_root / "workspace" / "outputs" / "jobs" / job_id
+    session_file = suite_root / "workspace" / "sessions" / "agent_teknik-ofis-muduru_test-auto-close.json"
+    vault_file = suite_root / "workspace" / "manager_vault" / "jobs" / "api-approval-test.md"
+    proposal_dir = suite_root / "journal" / "skill_proposals"
     _cleanup_dir(job_dir)
     _cleanup_dir(output_dir)
+    if session_file.exists():
+        session_file.unlink()
+    if vault_file.exists():
+        vault_file.unlink()
+    for path in proposal_dir.glob("*api-approval-test_auto_close.md"):
+        path.unlink()
     client.post(
         "/api/jobs",
         data={"project_name": "API Approval Test", "job_id": job_id},
@@ -296,6 +366,7 @@ def test_approve_candidates_validates_before_writing_specs():
     valid = client.post(
         f"/api/jobs/{job_id}/approve-candidates",
         json={
+            "session_id": session_id,
             "plates": [
                 {
                     "source_pdf": "input.pdf",
@@ -316,17 +387,60 @@ def test_approve_candidates_validates_before_writing_specs():
     valid_payload = valid.json()
     assert valid_payload["ok"] is True
     assert valid_payload["job"]["fsm_state"] == "completed"
+    assert valid_payload["partlist"]["ok"] is True
+    assert valid_payload["partlist"]["rows"] == 1
     assert (job_dir / "approved_plate_specs.json").exists()
     assert (output_dir / "APP100" / "APP100.dxf").exists()
+    assert Path(valid_payload["partlist"]["path"]).exists()
+    assert (output_dir / "retrospective.json").exists()
+
+    session_data = json.loads(session_file.read_text(encoding="utf-8"))
+    assert any(
+        message.get("role") == "assistant" and "`api-approval-test` isi tamamlandi" in message.get("content", "")
+        for message in session_data.get("messages", [])
+    )
+    event_types = [
+        json.loads(line)["type"]
+        for line in (output_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    for expected in [
+        "production_started",
+        "qc_completed",
+        "partlist_started",
+        "partlist_completed",
+        "retrospective_written",
+        "manager_notification",
+        "completed",
+    ]:
+        assert expected in event_types
+    proposals = list(proposal_dir.glob("*api-approval-test_auto_close.md"))
+    assert proposals
+    for path in proposals:
+        path.unlink()
+    if session_file.exists():
+        session_file.unlink()
+    if vault_file.exists():
+        vault_file.unlink()
 
 
 def test_approve_candidates_repairs_source_pdf_for_single_pdf_job():
     job_id = "api-approval-source-pdf-repair"
+    session_id = "agent:teknik-ofis-muduru:test-source-pdf-repair"
     suite_root = Path(__file__).resolve().parents[2]
     job_dir = suite_root / "workspace" / "imports" / "jobs" / job_id
     output_dir = suite_root / "workspace" / "outputs" / "jobs" / job_id
+    session_file = suite_root / "workspace" / "sessions" / "agent_teknik-ofis-muduru_test-source-pdf-repair.json"
+    vault_file = suite_root / "workspace" / "manager_vault" / "jobs" / "api-approval-source-pdf-repair.md"
+    proposal_dir = suite_root / "journal" / "skill_proposals"
     _cleanup_dir(job_dir)
     _cleanup_dir(output_dir)
+    if session_file.exists():
+        session_file.unlink()
+    if vault_file.exists():
+        vault_file.unlink()
+    for path in proposal_dir.glob("*api-approval-source-pdf-repair_auto_close.md"):
+        path.unlink()
     client.post(
         "/api/jobs",
         data={"project_name": "API Approval Source PDF Repair", "job_id": job_id},
@@ -336,6 +450,7 @@ def test_approve_candidates_repairs_source_pdf_for_single_pdf_job():
     response = client.post(
         f"/api/jobs/{job_id}/approve-candidates",
         json={
+            "session_id": session_id,
             "plates": [
                 {
                     "source_pdf": "wrong-name.pdf",
@@ -357,28 +472,167 @@ def test_approve_candidates_repairs_source_pdf_for_single_pdf_job():
     assert payload["ok"] is True
     approved = (job_dir / "approved_plate_specs.json").read_text(encoding="utf-8")
     assert '"source_pdf": "input.pdf"' in approved
+    for path in proposal_dir.glob("*api-approval-source-pdf-repair_auto_close.md"):
+        path.unlink()
+    if session_file.exists():
+        session_file.unlink()
+    if vault_file.exists():
+        vault_file.unlink()
 
 
 def test_partlist_endpoint_blocks_until_job_summary_exists():
     job_id = "api-partlist-blocked"
+    session_id = "agent:teknik-ofis-muduru:test-partlist-blocked"
     suite_root = Path(__file__).resolve().parents[2]
     job_dir = suite_root / "workspace" / "imports" / "jobs" / job_id
     output_dir = suite_root / "workspace" / "outputs" / "jobs" / job_id
+    session_file = suite_root / "workspace" / "sessions" / "agent_teknik-ofis-muduru_test-partlist-blocked.json"
+    vault_file = suite_root / "workspace" / "manager_vault" / "jobs" / "api-partlist-blocked.md"
+    proposal_dir = suite_root / "journal" / "skill_proposals"
     _cleanup_dir(job_dir)
     _cleanup_dir(output_dir)
+    if session_file.exists():
+        session_file.unlink()
+    if vault_file.exists():
+        vault_file.unlink()
+    for path in proposal_dir.glob("*api-partlist-blocked_auto_close.md"):
+        path.unlink()
     client.post(
         "/api/jobs",
         data={"project_name": "API Partlist Blocked", "job_id": job_id},
         files={"pdf_files": ("input.pdf", _vector_pdf_bytes(["placeholder"]), "application/pdf")},
     )
 
-    response = client.post(f"/api/jobs/{job_id}/partlist")
+    response = client.post(f"/api/jobs/{job_id}/partlist", json={"session_id": session_id})
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["ok"] is False
     assert payload["partlist"]["manual_reviews"][0]["reason"] == "job_summary_missing"
     assert (output_dir / "partlist_manual_review_required.json").exists()
+    assert (output_dir / "retrospective.json").exists()
+    assert payload["job"]["fsm_state"] == "awaiting_approval"
+    for path in proposal_dir.glob("*api-partlist-blocked_auto_close.md"):
+        path.unlink()
+    if session_file.exists():
+        session_file.unlink()
+    if vault_file.exists():
+        vault_file.unlink()
+
+
+def test_learning_health_and_job_backfill_create_retrospective():
+    job_id = "api-learning-backfill"
+    session_id = "agent:teknik-ofis-muduru:test-learning-backfill"
+    suite_root = Path(__file__).resolve().parents[2]
+    job_dir = suite_root / "workspace" / "imports" / "jobs" / job_id
+    output_dir = suite_root / "workspace" / "outputs" / "jobs" / job_id
+    session_file = suite_root / "workspace" / "sessions" / "agent_teknik-ofis-muduru_test-learning-backfill.json"
+    vault_file = suite_root / "workspace" / "manager_vault" / "jobs" / "api-learning-backfill.md"
+    proposal_dir = suite_root / "journal" / "skill_proposals"
+    _cleanup_dir(job_dir)
+    _cleanup_dir(output_dir)
+    if session_file.exists():
+        session_file.unlink()
+    if vault_file.exists():
+        vault_file.unlink()
+    for path in proposal_dir.glob("*api-learning-backfill_auto_close.md"):
+        path.unlink()
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": "API Learning Backfill"}), encoding="utf-8")
+    (output_dir / "job_summary.json").write_text(
+        json.dumps({"ok": True, "produced": [{"poz_no": "L100", "ok": True}], "manual_reviews": []}),
+        encoding="utf-8",
+    )
+    (output_dir / "API_Learning_Backfill_partlist.xlsx").write_text("placeholder", encoding="utf-8")
+
+    health = client.get("/api/learning/health")
+    assert health.status_code == 200
+    assert any(item["job_id"] == job_id for item in health.json()["jobs_missing_retrospective"])
+
+    dry_run = client.post(f"/api/jobs/{job_id}/learning/backfill", json={"dry_run": True, "session_id": session_id})
+    assert dry_run.status_code == 200
+    assert dry_run.json()["dry_run"] is True
+    assert "write_retrospective" in dry_run.json()["actions"]
+    assert not (output_dir / "retrospective.json").exists()
+
+    response = client.post(f"/api/jobs/{job_id}/learning/backfill", json={"session_id": session_id})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["retrospective"]["path"].endswith("retrospective.json")
+    assert (output_dir / "retrospective.json").exists()
+    assert vault_file.exists()
+    event_types = [
+        json.loads(line)["type"]
+        for line in (output_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert "retrospective_written" in event_types
+    assert "manager_notification" in event_types
+
+    health_after = client.get("/api/learning/health").json()
+    assert not any(item["job_id"] == job_id for item in health_after["jobs_missing_retrospective"])
+    for path in proposal_dir.glob("*api-learning-backfill_auto_close.md"):
+        path.unlink()
+    if session_file.exists():
+        session_file.unlink()
+    if vault_file.exists():
+        vault_file.unlink()
+
+
+def test_learning_backfill_ignores_nonterminal_summary_without_partlist():
+    job_id = "api-learning-nonterminal"
+    suite_root = Path(__file__).resolve().parents[2]
+    job_dir = suite_root / "workspace" / "imports" / "jobs" / job_id
+    output_dir = suite_root / "workspace" / "outputs" / "jobs" / job_id
+    _cleanup_dir(job_dir)
+    _cleanup_dir(output_dir)
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(
+        "\ufeff" + json.dumps({"job_id": job_id, "project_name": "API Learning Nonterminal"}),
+        encoding="utf-8",
+    )
+    (output_dir / "job_summary.json").write_text(
+        json.dumps({"ok": True, "produced": [{"poz_no": "N100", "ok": True}], "manual_reviews": []}),
+        encoding="utf-8",
+    )
+
+    health = client.get("/api/learning/health").json()
+    assert not any(item["job_id"] == job_id for item in health["jobs_missing_retrospective"])
+
+    response = client.post(f"/api/jobs/{job_id}/learning/backfill", json={"dry_run": False})
+    assert response.status_code == 200
+    assert response.json()["eligible"] is False
+    assert not (output_dir / "retrospective.json").exists()
+    _cleanup_dir(job_dir)
+    _cleanup_dir(output_dir)
+
+
+def test_learning_health_reports_open_note_state_violation():
+    job_id = "api-learning-open-note"
+    suite_root = Path(__file__).resolve().parents[2]
+    job_dir = suite_root / "workspace" / "imports" / "jobs" / job_id
+    output_dir = suite_root / "workspace" / "outputs" / "jobs" / job_id
+    _cleanup_dir(job_dir)
+    _cleanup_dir(output_dir)
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": "API Learning Open Note"}), encoding="utf-8")
+    (output_dir / "fsm_state.json").write_text(json.dumps({"state": "completed"}), encoding="utf-8")
+    (output_dir / "manager_issue_notes.jsonl").write_text(
+        json.dumps({"status": "open", "tags": ["pah/kose eksigi"], "affected_pozs": ["210"], "message": "pah eksik"}) + "\n",
+        encoding="utf-8",
+    )
+
+    health = client.get("/api/learning/health").json()
+
+    assert any(item["job_id"] == job_id for item in health["jobs_with_open_notes"])
+    assert any(item["job_id"] == job_id for item in health["open_note_state_violations"])
+    assert health["ok"] is False
+    _cleanup_dir(job_dir)
+    _cleanup_dir(output_dir)
 
 
 def test_job_file_endpoint_serves_output_files():

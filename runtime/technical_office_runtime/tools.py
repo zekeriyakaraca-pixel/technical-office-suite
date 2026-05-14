@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from .audit import get_audit_logger
+from .completion import append_job_event, complete_approved_job, notify_job_blocked
 from .config import RuntimePaths, ensure_autocad_import_path
 from .job_fsm import JobState, get_fsm
 from .job_runner import format_job_summary, run_pipeline_command
@@ -166,6 +168,28 @@ class ToolRegistry:
                     "additionalProperties": False,
                 },
                 self.draft_agent,
+            ),
+            ToolSpec(
+                "approve_candidates",
+                "Write approved_plate_specs.json for a job and trigger production pipeline. Used by manager chat after collecting corner_reliefs and other missing data conversationally.",
+                {
+                    "type": "object",
+                    "properties": {
+                        "job_id": {"type": "string"},
+                        "rows": {
+                            "type": "array",
+                            "items": {"type": "object"},
+                            "description": "Candidate rows with all fields including corner_reliefs filled.",
+                        },
+                        "session_id": {
+                            "type": "string",
+                            "description": "Optional manager chat session that receives the final notification.",
+                        },
+                    },
+                    "required": ["job_id", "rows"],
+                    "additionalProperties": False,
+                },
+                self.approve_candidates,
             ),
         ]
         if expose_approval_tool:
@@ -410,6 +434,108 @@ class ToolRegistry:
             "status": "draft_waiting_for_approval",
         }
 
+    def approve_candidates(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Write approved_plate_specs.json and run production pipeline (manager chat flow)."""
+        job_id = _required_string(args, "job_id")
+        rows = args.get("rows")
+        if not isinstance(rows, list) or not rows:
+            return {"ok": False, "error": "rows must be a non-empty list of candidate objects"}
+        job_dir = self.paths.jobs_import_root / job_id
+        if not job_dir.exists():
+            return _job_not_found(self.paths, job_id)
+        normalized_rows = _normalize_candidate_rows_for_job(rows, job_dir)
+        for row in normalized_rows:
+            if not isinstance(row, dict):
+                continue
+            clean_reliefs = []
+            for relief in row.get("corner_reliefs") or []:
+                if not isinstance(relief, dict):
+                    continue
+                rtype = str(relief.get("relief_type") or relief.get("type") or "")
+                if _normalize_relief_type(rtype) == "polygon_contour" or not relief.get("corner"):
+                    continue  # polygon_contour sentinel veya eksik corner — atla
+                relief["relief_type"] = _normalize_relief_type(rtype or "chamfer")
+                clean_reliefs.append(relief)
+            row["corner_reliefs"] = clean_reliefs
+        approval = {
+            "approved_by": "teknik-ofis-muduru",
+            "approved_at": datetime.now().astimezone().isoformat(),
+            "plates": normalized_rows,
+        }
+        (job_dir / "approved_plate_specs.json").write_text(
+            json.dumps(approval, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        fsm = get_fsm(self.paths.jobs_output_root)
+        fsm.force_transition(job_id, JobState.PRODUCING, reason="manager_approved_via_chat")
+        append_job_event(self.paths, job_id, "production_started", {"approved_count": len(normalized_rows)})
+        pipeline = self.run_autocad_job({"job_id": job_id, "autocad_live_policy": "off"})
+        if not pipeline.get("ok"):
+            blocked = notify_job_blocked(
+                self.paths,
+                job_id,
+                reason=str(pipeline.get("error") or "production_failed"),
+                session_id=str(args.get("session_id") or ""),
+                state=JobState.FAILED,
+            )
+            return {
+                "ok": False,
+                "error": blocked.get("error"),
+                "message": blocked.get("message"),
+                "job_id": job_id,
+                "pipeline": pipeline,
+            }
+        summary = pipeline.get("summary") if isinstance(pipeline.get("summary"), dict) else {}
+        if summary.get("ok") is not True:
+            manual_reviews = summary.get("manual_reviews") if isinstance(summary.get("manual_reviews"), list) else []
+            reason = "production_manual_review_pending" if manual_reviews else "qc_failed"
+            append_job_event(
+                self.paths,
+                job_id,
+                "qc_completed",
+                {
+                    "ok": False,
+                    "manual_review_count": len(manual_reviews),
+                    "produced_count": len(summary.get("produced", [])) if isinstance(summary.get("produced"), list) else 0,
+                },
+            )
+            blocked = notify_job_blocked(
+                self.paths,
+                job_id,
+                reason=reason,
+                session_id=str(args.get("session_id") or ""),
+                summary=summary,
+            )
+            return {
+                "ok": False,
+                "job_id": job_id,
+                "approved_count": len(normalized_rows),
+                "pipeline_summary": pipeline.get("message", ""),
+                "summary": summary,
+                "error": blocked.get("error"),
+                "message": blocked.get("message"),
+            }
+        poz_nos = [str(p.get("poz_no", "")) for p in normalized_rows if isinstance(p, dict)]
+        get_audit_logger(self.paths.workspace_root).log_approval(job_id, "teknik-ofis-muduru", len(normalized_rows), poz_nos)
+        completion = complete_approved_job(
+            self.paths,
+            job_id,
+            summary,
+            approved_count=len(normalized_rows),
+            session_id=str(args.get("session_id") or ""),
+        )
+        return {
+            "ok": bool(completion.get("ok")),
+            "job_id": job_id,
+            "approved_count": len(normalized_rows),
+            "pipeline_summary": pipeline.get("message", ""),
+            "summary": summary,
+            "partlist": completion.get("partlist"),
+            "retrospective": completion.get("retrospective"),
+            "message": completion.get("message"),
+            "error": completion.get("error"),
+        }
+
     def approve_agent(self, args: dict[str, Any]) -> dict[str, Any]:
         draft_id = _required_string(args, "draft_id")
         draft_dir = self.paths.suite_root / "agents" / "_drafts" / draft_id
@@ -440,6 +566,30 @@ class ToolRegistry:
             encoding="utf-8",
         )
         return {"ok": True, "agent_id": draft_id, "status": "active"}
+
+
+def _normalize_candidate_rows_for_job(rows: list[Any], job_dir: Path) -> list[dict[str, Any]]:
+    pdf_names = {path.name for path in job_dir.glob("*.pdf")}
+    single_pdf = next(iter(pdf_names)) if len(pdf_names) == 1 else None
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        item = dict(row)
+        source_pdf = str(item.get("source_pdf") or "").strip()
+        if single_pdf and source_pdf not in pdf_names:
+            item["source_pdf"] = single_pdf
+        normalized.append(item)
+    return normalized
+
+
+def _normalize_relief_type(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized in {"pah", "bevel", "beveled", "chamfered"}:
+        return "chamfer"
+    if normalized in {"round_relief", "rounded", "radius"}:
+        return "round"
+    return normalized or "chamfer"
 
 
 def _required_string(args: dict[str, Any], name: str) -> str:

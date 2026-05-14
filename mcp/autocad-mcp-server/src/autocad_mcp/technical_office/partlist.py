@@ -13,6 +13,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from autocad_mcp.technical_office.job_metadata import JobMetadata, load_job_metadata
 from autocad_mcp.technical_office.naming import safe_name
+from autocad_mcp.technical_office.partlist_metrics import enrich_partlist_metrics
 
 
 HEADERS = [
@@ -188,7 +189,7 @@ def _row_from_qc(qc: dict[str, Any], qc_path: Path) -> PartlistRow | dict[str, A
             "detail": f"QC is not deliverable: {qc_path}",
         }
 
-    spec = qc.get("plate_spec") or {}
+    spec = enrich_partlist_metrics(qc.get("plate_spec") or {})
     poz_no = str(spec.get("poz_no") or qc.get("poz_no") or "").strip()
     unit_surface = spec.get("unit_surface_area_m2")
     unit_weight = spec.get("unit_weight_kg")
@@ -204,7 +205,10 @@ def _row_from_qc(qc: dict[str, Any], qc_path: Path) -> PartlistRow | dict[str, A
         return {
             "reason": "partlist_metric_missing",
             "poz_no": poz_no or None,
-            "detail": f"Missing {', '.join(missing)} in {qc_path}; ERT partlist values will not be guessed.",
+            "detail": (
+                f"Missing {', '.join(missing)} in {qc_path}; width/height/thickness were not enough "
+                "to calculate deterministic ERT partlist values."
+            ),
         }
 
     return PartlistRow(

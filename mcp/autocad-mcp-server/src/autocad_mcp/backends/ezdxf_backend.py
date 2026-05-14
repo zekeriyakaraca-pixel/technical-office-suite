@@ -315,8 +315,36 @@ class EzdxfBackend(AutoCADBackend):
             return CommandResult(ok=False, error=str(ex))
 
     async def entity_offset(self, entity_id, distance) -> CommandResult:
-        # ezdxf doesn't have a native offset command; approximate for simple cases
-        return CommandResult(ok=False, error="Offset not supported on ezdxf backend")
+        try:
+            e = self._doc.entitydb.get(entity_id)
+            if e is None:
+                return CommandResult(ok=False, error=f"Entity {entity_id} not found")
+            if e.dxftype() == "LINE":
+                dx = e.dxf.end[0] - e.dxf.start[0]
+                dy = e.dxf.end[1] - e.dxf.start[1]
+                length = math.hypot(dx, dy)
+                if length < 1e-9:
+                    return CommandResult(ok=False, error="Line has zero length")
+                nx, ny = -dy / length * distance, dx / length * distance
+                new_e = self._msp.add_line(
+                    (e.dxf.start[0] + nx, e.dxf.start[1] + ny),
+                    (e.dxf.end[0] + nx, e.dxf.end[1] + ny),
+                    dxfattribs={"layer": e.dxf.get("layer", "0")},
+                )
+                return CommandResult(ok=True, payload={"entity_type": "LINE", "handle": new_e.dxf.handle})
+            elif e.dxftype() == "CIRCLE":
+                new_radius = e.dxf.radius + distance
+                if new_radius <= 0:
+                    return CommandResult(ok=False, error="Offset produces non-positive radius")
+                new_e = self._msp.add_circle(
+                    e.dxf.center, new_radius,
+                    dxfattribs={"layer": e.dxf.get("layer", "0")},
+                )
+                return CommandResult(ok=True, payload={"entity_type": "CIRCLE", "handle": new_e.dxf.handle})
+            else:
+                return CommandResult(ok=False, error=f"Offset not supported for {e.dxftype()} on ezdxf backend")
+        except Exception as ex:
+            return CommandResult(ok=False, error=str(ex))
 
     async def entity_array(self, entity_id, rows, cols, row_dist, col_dist) -> CommandResult:
         try:
@@ -333,6 +361,178 @@ class EzdxfBackend(AutoCADBackend):
                     copy.translate(c * col_dist, r * row_dist, 0)
                     handles.append(copy.dxf.handle)
             return CommandResult(ok=True, payload={"copies": len(handles), "handles": handles})
+        except Exception as ex:
+            return CommandResult(ok=False, error=str(ex))
+
+    async def entity_set_properties(self, entity_id: str, props: dict) -> CommandResult:
+        try:
+            e = self._doc.entitydb.get(entity_id)
+            if e is None:
+                return CommandResult(ok=False, error=f"Entity {entity_id} not found")
+            if "layer" in props:
+                self._ensure_layer(props["layer"])
+                e.dxf.layer = props["layer"]
+            if "color" in props:
+                e.dxf.color = self._color_to_int(props["color"])
+            if "linetype" in props:
+                e.dxf.linetype = props["linetype"]
+            if "lineweight" in props:
+                e.dxf.lineweight = int(props["lineweight"])
+            return CommandResult(ok=True, payload={"entity_id": entity_id, "updated": list(props.keys())})
+        except Exception as ex:
+            return CommandResult(ok=False, error=str(ex))
+
+    async def entity_query(self, filters: dict) -> CommandResult:
+        try:
+            results = []
+            bbox = filters.get("bbox")  # [xmin, ymin, xmax, ymax]
+            for e in self._msp:
+                if "type" in filters and e.dxftype() != filters["type"].upper():
+                    continue
+                if "layer" in filters and e.dxf.get("layer", "0") != filters["layer"]:
+                    continue
+                if bbox is not None and not self._entity_in_bbox(e, bbox):
+                    continue
+                results.append({
+                    "type": e.dxftype(),
+                    "handle": e.dxf.handle,
+                    "layer": e.dxf.get("layer", "0"),
+                })
+            return CommandResult(ok=True, payload={"entities": results, "count": len(results)})
+        except Exception as ex:
+            return CommandResult(ok=False, error=str(ex))
+
+    @staticmethod
+    def _entity_in_bbox(e, bb: list) -> bool:
+        xmin, ymin, xmax, ymax = bb[0], bb[1], bb[2], bb[3]
+
+        def _pt_in(x, y) -> bool:
+            return xmin <= x <= xmax and ymin <= y <= ymax
+
+        t = e.dxftype()
+        try:
+            if t == "CIRCLE":
+                cx, cy = e.dxf.center.x, e.dxf.center.y
+                return _pt_in(cx, cy)
+            if t == "LINE":
+                mx = (e.dxf.start[0] + e.dxf.end[0]) / 2
+                my = (e.dxf.start[1] + e.dxf.end[1]) / 2
+                return _pt_in(mx, my)
+            if t == "LWPOLYLINE":
+                return any(_pt_in(x, y) for x, y, *_ in e.get_points())
+            if t in ("TEXT", "MTEXT", "INSERT"):
+                ins = e.dxf.insert
+                return _pt_in(ins[0], ins[1])
+            if t == "ARC":
+                cx, cy = e.dxf.center.x, e.dxf.center.y
+                return _pt_in(cx, cy)
+        except Exception:
+            pass
+        return True  # unknown entity type: include by default
+
+    async def entity_erase_many(self, ids: list[str]) -> CommandResult:
+        erased, missing = [], []
+        for eid in ids:
+            e = self._doc.entitydb.get(eid)
+            if e is None:
+                missing.append(eid)
+                continue
+            try:
+                self._msp.delete_entity(e)
+                erased.append(eid)
+            except Exception:
+                missing.append(eid)
+        return CommandResult(ok=True, payload={"erased": erased, "not_found": missing})
+
+    async def create_spline(self, points: list[list[float]], layer: str | None = None) -> CommandResult:
+        self._ensure_layer(layer)
+        pts3d = [(p[0], p[1], 0) for p in points]
+        e = self._msp.add_spline(pts3d, dxfattribs={"layer": layer or "0"})
+        return CommandResult(ok=True, payload={"entity_type": "SPLINE", "handle": e.dxf.handle})
+
+    async def create_mleader(self, points: list[list[float]], text: str, layer: str | None = None) -> CommandResult:
+        try:
+            self._ensure_layer(layer)
+            pts = [(p[0], p[1]) for p in points]
+            leader = self._msp.add_leader(pts, dxfattribs={"layer": layer or "0"})
+            last = pts[-1]
+            txt = self._msp.add_mtext(text, dxfattribs={
+                "insert": (last[0] + 2, last[1]),
+                "char_height": 2.5,
+                "width": 30,
+                "layer": layer or "0",
+            })
+            return CommandResult(ok=True, payload={
+                "entity_type": "MLEADER",
+                "leader_handle": leader.dxf.handle,
+                "text_handle": txt.dxf.handle,
+            })
+        except Exception as ex:
+            return CommandResult(ok=False, error=str(ex))
+
+    async def drawing_list_layouts(self) -> CommandResult:
+        if not self._doc:
+            return CommandResult(ok=False, error="No document open")
+        layouts = [{"name": l.name, "block_name": l.layout_key} for l in self._doc.layouts]
+        return CommandResult(ok=True, payload={"layouts": layouts, "count": len(layouts)})
+
+    async def drawing_get_extents(self) -> CommandResult:
+        if not self._doc:
+            return CommandResult(ok=False, error="No document open")
+        try:
+            import ezdxf.bbox as _bbox
+            bb = _bbox.extents(self._msp)
+            if bb is None or not bb.has_data:
+                return CommandResult(ok=True, payload={"extents": None, "entity_count": len(self._msp)})
+            return CommandResult(ok=True, payload={
+                "min": [round(bb.extmin[0], 6), round(bb.extmin[1], 6)],
+                "max": [round(bb.extmax[0], 6), round(bb.extmax[1], 6)],
+                "width": round(bb.extmax[0] - bb.extmin[0], 6),
+                "height": round(bb.extmax[1] - bb.extmin[1], 6),
+            })
+        except Exception as ex:
+            return CommandResult(ok=False, error=str(ex))
+
+    async def layer_delete(self, name: str) -> CommandResult:
+        if not self._doc:
+            return CommandResult(ok=False, error="No document open")
+        if name not in self._doc.layers:
+            return CommandResult(ok=False, error=f"Layer '{name}' does not exist")
+        if name == "0":
+            return CommandResult(ok=False, error="Cannot delete layer '0'")
+        try:
+            self._doc.layers.remove(name)
+            return CommandResult(ok=True, payload={"deleted": name})
+        except Exception as ex:
+            return CommandResult(ok=False, error=str(ex))
+
+    async def entity_explode(self, entity_id: str) -> CommandResult:
+        try:
+            e = self._doc.entitydb.get(entity_id)
+            if e is None:
+                return CommandResult(ok=False, error=f"Entity {entity_id} not found")
+            t = e.dxftype()
+            new_handles: list[str] = []
+            if t == "INSERT":
+                for virtual in e.virtual_entities():
+                    copy = virtual.copy()
+                    self._msp.add_entity(copy)
+                    new_handles.append(copy.dxf.handle)
+                self._msp.delete_entity(e)
+            elif t == "LWPOLYLINE":
+                pts = list(e.get_points("xy"))
+                layer = e.dxf.get("layer", "0")
+                closed = bool(e.closed)
+                for i in range(len(pts) - 1):
+                    seg = self._msp.add_line(pts[i], pts[i + 1], dxfattribs={"layer": layer})
+                    new_handles.append(seg.dxf.handle)
+                if closed and len(pts) >= 2:
+                    seg = self._msp.add_line(pts[-1], pts[0], dxfattribs={"layer": layer})
+                    new_handles.append(seg.dxf.handle)
+                self._msp.delete_entity(e)
+            else:
+                return CommandResult(ok=False, error=f"Explode not supported for {t} on ezdxf backend")
+            return CommandResult(ok=True, payload={"exploded_from": entity_id, "new_entities": new_handles, "count": len(new_handles)})
         except Exception as ex:
             return CommandResult(ok=False, error=str(ex))
 

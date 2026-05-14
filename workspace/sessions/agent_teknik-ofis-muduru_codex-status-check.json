@@ -1,0 +1,15 @@
+{
+  "session_id": "agent:teknik-ofis-muduru:codex-status-check",
+  "messages": [
+    {
+      "role": "user",
+      "content": "uretim ne durumda",
+      "timestamp": 1778653741356
+    },
+    {
+      "role": "assistant",
+      "content": "`danieli-1701` durum ozeti:\n- Proje: danieli-1701\n- FSM: completed\n- Job sonucu: ok=true\n- PDF: 1 dosya, toplam 26 sayfa\n- Siniflandirma: visual_text_required\n- Codex adaylari: 26\n- Uretilen poz: 26\n- Manuel inceleme: 0\n- Onayli spec: var\nKarar: Mevcut ozet dosyalarina gore ek blokaj gorunmuyor; yine de QC ve aday kapsamindan emin olmak gerekir.",
+      "timestamp": 1778653741356
+    }
+  ]
+}

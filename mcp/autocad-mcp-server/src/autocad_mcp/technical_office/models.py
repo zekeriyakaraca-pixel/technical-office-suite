@@ -44,6 +44,14 @@ class CornerReliefSpec:
     corner: str
     radius: float
     relief_type: str = "round"
+    x_offset: float | None = None
+    y_offset: float | None = None
+
+    def effective_x_offset(self) -> float:
+        return self.x_offset if self.x_offset is not None else self.radius
+
+    def effective_y_offset(self) -> float:
+        return self.y_offset if self.y_offset is not None else self.radius
 
 
 @dataclass
@@ -97,7 +105,11 @@ class PlateSpec:
             seen_corners.add(relief.corner)
             if relief.radius <= 0:
                 errors.append(f"corner relief {index} radius must be positive")
-            if relief.radius * 2 >= min(self.width, self.height):
+            x_offset = relief.effective_x_offset()
+            y_offset = relief.effective_y_offset()
+            if x_offset <= 0 or y_offset <= 0:
+                errors.append(f"corner relief {index} offsets must be positive")
+            if x_offset >= self.width or y_offset >= self.height:
                 errors.append(f"corner relief {index} radius is too large for plate bounds")
             if relief.relief_type not in {"round", "cugul", "chamfer", "pah"}:
                 errors.append(f"corner relief {index} has unsupported type: {relief.relief_type}")
