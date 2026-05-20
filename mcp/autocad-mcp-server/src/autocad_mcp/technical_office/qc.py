@@ -74,6 +74,9 @@ def _check_dxf(spec: PlateSpec, path: Path) -> dict[str, Any]:
         "corner_relief_count": corner_relief_count,
         "arc_corner_relief_count": bulge_count,
         "polygon_corner_relief_count": polygon_corner_count,
+        "outer_contour_vertex_count": len(outer_points),
+        "expected_polygon_vertex_count": len(spec.polygon_vertices or []),
+        "has_polygon_vertices": bool(spec.polygon_vertices),
         "expected_corner_reliefs": len(spec.corner_reliefs),
     }
 

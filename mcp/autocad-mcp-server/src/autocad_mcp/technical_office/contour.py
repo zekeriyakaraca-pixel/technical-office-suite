@@ -15,6 +15,9 @@ _QUARTER_BULGE = math.tan(math.radians(90.0) / 4.0)
 def contour_lwpolyline_points(spec: PlateSpec) -> list[PointBulge]:
     """Return CCW outer-contour vertices with DXF bulges."""
 
+    if spec.polygon_vertices:
+        return [(v["x"], v["y"], 0.0) for v in spec.polygon_vertices]
+
     reliefs = {relief.corner: relief for relief in spec.corner_reliefs}
     if not reliefs:
         return [

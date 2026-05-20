@@ -6,6 +6,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from .state_io import atomic_write_json
+
 
 class JobState(str, Enum):
     UPLOADED = "uploaded"
@@ -100,7 +102,7 @@ class JobFSM:
         }
         if reason:
             data["reason"] = reason
-        path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(path, data)
 
 
 _fsm_instances: dict[str, JobFSM] = {}

@@ -11,6 +11,11 @@
 - Düşük güvenli PDF'de ölçü veya delik konumu tahmini yapamaz.
 - QC onayı rolünü tek başına kapatamaz.
 
+## Visual Evidence Rules
+- Gorsel adaylarda `GORSEL_ANALIZ_PROTOKOLU.md` ve `MIKRO_ZOOM_PROTOKOLU.md` uygulanir.
+- Dusuk guvenli aday `approval_required=true` ile teknik-ofis-muduru onayina gider.
+- Mikro-zoom manifesti ve `source_trace` olmayan gorsel adayi uretim gercegi sayilmaz.
+
 ## Sync Safety
 - Original PDF files are read-only inputs.
 - Outputs are written under `outputs/jobs/<job_id>/`.

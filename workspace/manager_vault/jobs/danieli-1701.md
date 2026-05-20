@@ -1,6 +1,6 @@
 # danieli-1701
 
-Updated: 2026-05-14T13:26:08.564702+03:00
+Updated: 2026-05-20T17:40:29.308902+03:00
 
 ## Facts
 - [open] issue: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
@@ -54,23 +54,23 @@ Updated: 2026-05-14T13:26:08.564702+03:00
 - [decision] manager_decision: `danieli-1701` durum ozeti: - Proje: danieli-1701 - FSM: completed - Job sonucu: ok=false - PDF: 1 dosya, toplam 26 sayfa - Siniflandirma: visual_text_required - Codex adaylari: 3 - Uretilen poz: 3 - Manuel inceleme: 3 - Onayli spec: var - Acik mudur notu: 3 Karar: Bu is tamamlanmis kabul edilmemeli. Gorsel PDF sayfa kapsami uretilen/adaya gore eksik; eksik sayfalar ve acik geometri notlari kapanmadan partlist/teslim kapisi acilmamali.
 
 ## Recent Conversation
-- 2026-05-14T09:43:51.139195+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
-- 2026-05-14T09:43:51.140195+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
-- 2026-05-14T10:36:01.210161+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
-- 2026-05-14T10:36:01.213160+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
-- 2026-05-14T11:05:26.731242+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
-- 2026-05-14T11:05:26.732247+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
-- 2026-05-14T11:27:54.942384+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
-- 2026-05-14T11:27:54.944551+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
-- 2026-05-14T11:29:03.610820+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
-- 2026-05-14T11:29:03.612885+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
-- 2026-05-14T11:48:25.328654+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
-- 2026-05-14T11:48:25.330779+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
-- 2026-05-14T11:48:57.786702+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
-- 2026-05-14T11:48:57.788701+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
-- 2026-05-14T12:05:18.054376+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
-- 2026-05-14T12:05:18.056392+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
-- 2026-05-14T12:33:05.741086+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
-- 2026-05-14T12:33:05.742090+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
-- 2026-05-14T12:33:34.904667+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
-- 2026-05-14T12:33:34.905677+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
+- 2026-05-15T09:43:59.250403+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
+- 2026-05-15T09:43:59.251402+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
+- 2026-05-20T11:56:22.264273+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
+- 2026-05-20T11:56:22.265271+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
+- 2026-05-20T12:06:13.516486+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
+- 2026-05-20T12:06:13.517543+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
+- 2026-05-20T13:06:44.708288+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
+- 2026-05-20T13:06:44.709288+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
+- 2026-05-20T13:07:50.199513+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
+- 2026-05-20T13:07:50.200524+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
+- 2026-05-20T13:47:30.813817+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
+- 2026-05-20T13:47:30.815816+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
+- 2026-05-20T13:48:14.458232+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
+- 2026-05-20T13:48:14.460205+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
+- 2026-05-20T14:19:08.511341+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
+- 2026-05-20T14:19:08.514330+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
+- 2026-05-20T16:20:16.217133+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
+- 2026-05-20T16:20:16.220134+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.
+- 2026-05-20T16:34:55.254883+03:00 user: danieli-1701 isinde pdf 26 sayfa ama 3 poz uretti
+- 2026-05-20T16:34:55.256919+03:00 assistant: Karar: Bu is tamamlanmis kabul edilmemeli.

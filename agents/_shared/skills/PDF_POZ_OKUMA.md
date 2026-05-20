@@ -25,8 +25,10 @@ Karisik PDF kaynaklarindan poz numarasi, plaka olcusu ve uretim adaylarini guven
    - `extraction_candidates.json` icine `approval_required=true` aday kaydi yaz.
    - `manual_review_required.json` icinde Turkce ve aksiyonlu `visual_text_required` veya `text_layer_unreadable` karari ver.
    - Poz numarasini sayfa numarasi olarak aciklama.
-6. Yerel OCR veya Codex/opsiyonel vision provider hazirsa yalnizca aday okuma icin kullan; dusuk guvenli adaydan dogrudan DXF/NC1 uretme.
-7. Mudur `approved_plate_specs.json` ile poz/olcu/delik bilgisini onaylarsa uretim pipeline'i bu spec'leri kullanir ve QC kapisi aynen isler.
+6. Gorsel aday gerekiyorsa once `MIKRO_ZOOM_PROTOKOLU.md` ile tam sayfa + mikro-zoom kanit paketi ve `_microzoom_manifest.json` uret.
+7. Yerel OCR veya Codex/opsiyonel vision provider hazirsa yalnizca aday okuma icin kullan; dusuk guvenli adaydan dogrudan DXF/NC1 uretme.
+8. Her gorsel aday `GORSEL_ANALIZ_PROTOKOLU.md` sozlesmesine uyar: `source_trace`, `analysis_confidence`, `uncertainties`, `microzoom_manifest_path`, `evidence_images`, `approval_required=true`.
+9. Mudur `approved_plate_specs.json` ile poz/olcu/delik bilgisini onaylarsa uretim pipeline'i bu spec'leri kullanir ve QC kapisi aynen isler.
 
 ## Outputs
 - `PlateSpec` adaylari
@@ -37,6 +39,7 @@ Karisik PDF kaynaklarindan poz numarasi, plaka olcusu ve uretim adaylarini guven
 ## Quality Bar
 - Taranmis, metinsiz veya metin katmani bozuk PDF icin geometri tahmini yapma.
 - Yerel OCR/vision sonucu yalnizca adaydir; mudur onayi olmadan uretim sayilmaz.
+- Mikro-zoom manifesti ve `source_trace` olmayan gorsel aday onaya tasinmaz.
 - Poz listesi veya `approved_plate_specs.json`, PDF'deki isimlendirmeden once gelir.
 - Hata aciklamalari Turkce olur ve `poz_no` kavramini sayfa numarasi ile karistirmaz.
 
@@ -54,4 +57,5 @@ Karisik PDF kaynaklarindan poz numarasi, plaka olcusu ve uretim adaylarini guven
 
 ## Integration
 - `PLAKA_GEOMETRI_CIKARMA.md` skill'ine guvenli `PlateSpec` girdisi saglar.
+- `GORSEL_ANALIZ_PROTOKOLU.md` ve `MIKRO_ZOOM_PROTOKOLU.md` gorsel aday kanit sozlesmesini belirler.
 - `OGRENME_VE_HAFIZA_YONETIMI.md` ile QC kanitli tekrar eden oruntuleri skill onerisine tasir.

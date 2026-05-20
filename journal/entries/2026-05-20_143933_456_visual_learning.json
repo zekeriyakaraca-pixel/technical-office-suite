@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "event_type": "manager_approved_visual_pdf_candidate",
+  "job_id": "456",
+  "approved_poz_count": 1,
+  "pattern_fingerprints": [
+    "visual_text_required|pages=1|vectors=dense|text=missing"
+  ],
+  "output_dir": "C:\\Users\\elekc\\OneDrive\\Masaüstü\\programlar\\programlar\\GUNCELLEME\\technical-office-suite\\workspace\\outputs\\jobs\\456",
+  "approved_specs": [
+    "4042"
+  ],
+  "created_at": "2026-05-20T14:39:33.636349+03:00"
+}

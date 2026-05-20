@@ -642,3 +642,279 @@
 {"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-14T13:20:27.497163+03:00"}
 {"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-14T13:20:27.608292+03:00"}
 {"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-14T13:20:27.645945+03:00"}
+{"event": "partlist_created", "job_id": "d-28-20260513155258", "row_count": 24, "ok": true, "timestamp": "2026-05-14T14:59:19.985239+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-14T15:20:42.724628+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-14T15:20:43.276877+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:20:43.432559+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-14T15:20:43.552160+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-14T15:20:43.917786+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:20:43.958287+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-14T15:20:44.087702+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-14T15:20:44.284886+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:20:44.322841+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-14T15:20:44.448339+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-14T15:20:44.479308+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-14T15:21:41.351456+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-14T15:21:41.886862+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:21:41.995905+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-14T15:21:42.062278+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-14T15:21:42.219624+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:21:42.248155+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-14T15:21:42.321669+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-14T15:21:42.405544+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:21:42.452739+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-14T15:21:42.542791+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-14T15:21:42.565715+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-14T15:23:37.713605+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-14T15:23:37.917565+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:23:38.039053+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-14T15:23:38.089565+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-14T15:23:38.160613+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:23:38.175614+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-14T15:23:38.226124+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-14T15:23:38.282675+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:23:38.309677+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-14T15:23:38.358695+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-14T15:23:38.371701+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-14T15:43:45.742377+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-14T15:43:46.351557+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:43:46.515745+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-14T15:43:46.633225+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-14T15:43:46.876453+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:43:46.917019+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-14T15:43:47.055605+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-14T15:43:47.254022+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-14T15:43:47.292022+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-14T15:43:47.420248+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-14T15:43:47.452248+03:00"}
+{"event": "job_created", "job_id": "123", "project_name": "deneme", "pdf_count": 1, "timestamp": "2026-05-14T15:53:52.233266+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-14T16:06:09.082263+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-14T16:06:09.531738+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T16:06:09.657607+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-14T16:06:09.736461+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-14T16:06:09.870342+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T16:06:09.895190+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-14T16:06:09.964069+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-14T16:06:10.082849+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-14T16:06:10.103263+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-14T16:06:10.177037+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-14T16:06:10.199553+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-14T16:09:31.797411+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-14T16:09:32.090169+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T16:09:32.187498+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-14T16:09:32.253717+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-14T16:09:32.349667+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T16:09:32.369666+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-14T16:09:32.428683+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-14T16:09:32.506543+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-14T16:09:32.524797+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-14T16:09:32.599558+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-14T16:09:32.623157+03:00"}
+{"event": "candidates_approved", "job_id": "123", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["4042"], "timestamp": "2026-05-14T16:18:14.501282+03:00"}
+{"event": "partlist_created", "job_id": "123", "row_count": 1, "ok": true, "timestamp": "2026-05-14T16:18:14.536934+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-14T16:39:12.152198+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-14T16:39:12.390953+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T16:39:12.458013+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-14T16:39:12.498018+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-14T16:39:12.569419+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-14T16:39:12.585306+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-14T16:39:12.634863+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-14T16:39:12.705412+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-14T16:39:12.721006+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-14T16:39:12.769538+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-14T16:39:12.782540+03:00"}
+{"event": "partlist_created", "job_id": "123", "row_count": 1, "ok": true, "timestamp": "2026-05-14T16:50:45.543090+03:00"}
+{"event": "job_created", "job_id": "56", "project_name": "fgah", "pdf_count": 1, "timestamp": "2026-05-14T16:52:16.253494+03:00"}
+{"event": "candidates_approved", "job_id": "56", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["4042"], "timestamp": "2026-05-15T08:56:16.338064+03:00"}
+{"event": "partlist_created", "job_id": "56", "row_count": 1, "ok": true, "timestamp": "2026-05-15T08:56:16.372309+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-15T09:06:25.492034+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-15T09:06:25.746540+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-15T09:06:25.823536+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-15T09:06:25.877081+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-15T09:06:25.968280+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-15T09:06:25.991680+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-15T09:06:26.061191+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-15T09:06:26.130747+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-15T09:06:26.148294+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-15T09:06:26.199835+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-15T09:06:26.213834+03:00"}
+{"event": "partlist_created", "job_id": "56", "row_count": 1, "ok": true, "timestamp": "2026-05-15T09:07:54.085375+03:00"}
+{"event": "job_created", "job_id": "456", "project_name": "d-28", "pdf_count": 1, "timestamp": "2026-05-15T09:11:03.769806+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-15T09:43:35.920329+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-15T09:43:36.233585+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-15T09:43:36.374614+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-15T09:43:36.436028+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-15T09:43:36.561299+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-15T09:43:36.580293+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-15T09:43:36.654192+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-15T09:43:36.737272+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-15T09:43:36.761242+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-15T09:43:36.827281+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-15T09:43:36.845810+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-15T09:43:59.010978+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-15T09:43:59.293499+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-15T09:43:59.418934+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-15T09:43:59.472990+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-15T09:43:59.598972+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-15T09:43:59.620215+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-15T09:43:59.680574+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-15T09:43:59.759863+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-15T09:43:59.778517+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-15T09:43:59.833357+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-15T09:43:59.852383+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T11:56:22.092577+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T11:56:22.301669+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T11:56:22.361986+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T11:56:22.402646+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T11:56:22.477204+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T11:56:22.491196+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T11:56:22.540168+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T11:56:22.596702+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T11:56:22.611227+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T11:56:22.656773+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T11:56:22.669770+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T12:06:13.262832+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T12:06:13.560175+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T12:06:13.663679+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T12:06:13.717292+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T12:06:13.823422+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T12:06:13.844113+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T12:06:13.912796+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T12:06:13.982635+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T12:06:13.999161+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T12:06:14.066280+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T12:06:14.084949+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T13:06:44.527233+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T13:06:44.744814+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:06:44.805657+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T13:06:44.846147+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T13:06:44.921798+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:06:44.936257+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T13:06:44.986767+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T13:06:45.090219+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:06:45.106113+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T13:06:45.153664+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T13:06:45.165682+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T13:07:50.035165+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T13:07:50.234789+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:07:50.334346+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T13:07:50.374576+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T13:07:50.454685+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:07:50.469684+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T13:07:50.517980+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T13:07:50.582121+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:07:50.603207+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T13:07:50.651307+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T13:07:50.663313+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T13:47:30.023484+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T13:47:30.851409+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:47:31.102620+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T13:47:31.145661+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T13:47:31.234024+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:47:31.278553+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T13:47:31.342099+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T13:47:31.426618+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:47:31.451835+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T13:47:31.523724+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T13:47:31.539775+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T13:48:14.063691+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T13:48:14.515758+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:48:14.597812+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T13:48:14.659330+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T13:48:14.762567+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:48:14.781457+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T13:48:14.847631+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T13:48:14.942692+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T13:48:14.963696+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T13:48:15.021206+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T13:48:15.035739+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T14:19:08.306306+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T14:19:08.555863+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T14:19:08.618820+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T14:19:08.661764+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T14:19:08.743258+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T14:19:08.760250+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T14:19:08.815434+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T14:19:08.900917+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T14:19:08.920538+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T14:19:08.968114+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T14:19:08.981105+03:00"}
+{"event": "candidates_approved", "job_id": "456", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["4042"], "timestamp": "2026-05-20T14:39:33.904594+03:00"}
+{"event": "partlist_created", "job_id": "456", "row_count": 1, "ok": true, "timestamp": "2026-05-20T14:39:33.944291+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T16:20:15.971511+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T16:20:16.292998+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:20:16.376102+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T16:20:16.433890+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T16:20:16.652272+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:20:16.674641+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T16:20:16.741397+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T16:20:16.844310+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:20:16.868745+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T16:20:16.933263+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T16:20:16.953358+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T16:34:55.022843+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T16:34:55.304413+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:34:55.388903+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T16:34:55.446315+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T16:34:55.543680+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:34:55.561587+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T16:34:55.639828+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T16:34:55.725643+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:34:55.749430+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T16:34:55.820614+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T16:34:55.835153+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T16:40:49.144982+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T16:40:49.487877+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:40:49.567406+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T16:40:49.631478+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T16:40:49.780579+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:40:49.800203+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T16:40:49.871614+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T16:40:50.000224+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:40:50.025241+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T16:40:50.100317+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T16:40:50.122319+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T16:43:05.356292+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T16:43:05.628790+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:43:05.712573+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T16:43:05.774177+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T16:43:05.968130+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:43:06.021130+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T16:43:06.087682+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T16:43:06.197696+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:43:06.220835+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T16:43:06.288699+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T16:43:06.306700+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T16:52:36.741169+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T16:52:37.068336+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:52:37.147584+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T16:52:37.203189+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T16:52:37.324377+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:52:37.342940+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T16:52:37.417525+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T16:52:37.509684+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T16:52:37.527105+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T16:52:37.585867+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T16:52:37.601866+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T17:31:24.908011+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T17:31:25.161818+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T17:31:25.262016+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T17:31:25.322773+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T17:31:25.445346+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T17:31:25.473343+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T17:31:25.562460+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T17:31:25.679854+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T17:31:25.699638+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T17:31:25.770088+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T17:31:25.788820+03:00"}
+{"event": "job_created", "job_id": "chat-001", "project_name": "Chat Pipeline Test", "pdf_count": 1, "timestamp": "2026-05-20T17:40:29.123178+03:00"}
+{"event": "job_created", "job_id": "api-upload-test", "project_name": "API Upload Test", "pdf_count": 1, "timestamp": "2026-05-20T17:40:29.342306+03:00"}
+{"event": "partlist_created", "job_id": "api-upload-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T17:40:29.405975+03:00"}
+{"event": "job_created", "job_id": "api-approval-test", "project_name": "API Approval Test", "pdf_count": 1, "timestamp": "2026-05-20T17:40:29.444958+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-test", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["APP100"], "timestamp": "2026-05-20T17:40:29.530908+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-test", "row_count": 1, "ok": true, "timestamp": "2026-05-20T17:40:29.546537+03:00"}
+{"event": "job_created", "job_id": "api-approval-source-pdf-repair", "project_name": "API Approval Source PDF Repair", "pdf_count": 1, "timestamp": "2026-05-20T17:40:29.618941+03:00"}
+{"event": "candidates_approved", "job_id": "api-approval-source-pdf-repair", "approved_by": "teknik-ofis-muduru", "plate_count": 1, "poz_nos": ["FIX100"], "timestamp": "2026-05-20T17:40:29.689367+03:00"}
+{"event": "partlist_created", "job_id": "api-approval-source-pdf-repair", "row_count": 1, "ok": true, "timestamp": "2026-05-20T17:40:29.706363+03:00"}
+{"event": "job_created", "job_id": "api-partlist-blocked", "project_name": "API Partlist Blocked", "pdf_count": 1, "timestamp": "2026-05-20T17:40:29.754283+03:00"}
+{"event": "partlist_created", "job_id": "api-partlist-blocked", "row_count": 0, "ok": false, "timestamp": "2026-05-20T17:40:29.768585+03:00"}

@@ -25,6 +25,31 @@ Useful commands:
 .\scripts\suite.ps1 stop
 ```
 
+## Auth and Dashboard Tokens
+
+By default the runtime runs in open local mode. Set `TOFFICE_API_SECRET` to require HMAC bearer tokens for job APIs, manager chat, sessions, audit, memory, SLA, metrics, and file access.
+
+Create a token:
+
+```powershell
+.\scripts\toffice.ps1 token create --hours 24
+```
+
+Paste the token into the dashboard header and click `Token Kaydet`. The dashboard stores it in browser `localStorage` as `toffice_api_token`.
+
+PDF preview and output downloads use short-lived file tickets in token mode. The dashboard requests these automatically through `POST /api/jobs/{job_id}/file-ticket`, so iframe previews work without custom request headers.
+
+Useful security environment variables:
+
+```powershell
+$env:TOFFICE_API_SECRET="change-me"
+$env:TOFFICE_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
+$env:TOFFICE_MAX_UPLOAD_MB="100"
+$env:TOFFICE_MAX_JOB_UPLOAD_MB="300"
+```
+
+Rate limiting is in-memory and dependency-free. Tests may disable it with `TOFFICE_RATE_LIMIT_DISABLED=1`.
+
 ## Local CLI
 
 ```powershell
@@ -33,6 +58,7 @@ Useful commands:
 .\scripts\toffice.ps1 ask "test-001 isini AutoCAD live kapali calistir ve QC ozetle"
 .\scripts\toffice.ps1 job run test-001 --autocad off
 .\scripts\toffice.ps1 agent draft "Tekla DXF kontrol ajani"
+.\scripts\toffice.ps1 token create --hours 24
 ```
 
 `doctor` checks the local `codex.cmd` executable, ChatGPT login state, `codex.cmd exec` readiness, and whether Codex CLI's global `autocad-mcp` entry points to this repo.
@@ -43,6 +69,7 @@ Useful commands:
 - `GET /api/jobs`: list jobs.
 - `GET /api/jobs/{job_id}`: inspect diagnostics, candidates, approvals, outputs, partlist, and events.
 - `GET /api/jobs/{job_id}/files/{filename}`: download input or output files.
+- `POST /api/jobs/{job_id}/file-ticket`: create a short-lived iframe/download URL for one job file.
 - `POST /api/jobs/{job_id}/run`: run diagnostics/pipeline and Codex visual candidate extraction when needed.
 - `POST /api/jobs/{job_id}/approve-candidates`: approve edited candidates and run production.
 - `POST /api/jobs/{job_id}/partlist`: create or block ERT partlist.
@@ -53,7 +80,7 @@ Useful commands:
 
 ```powershell
 uv run --project runtime --extra dev pytest runtime\tests -q
-uv run --project mcp\autocad-mcp-server --extra dev pytest mcp\autocad-mcp-server\tests\test_technical_office_pipeline.py -q
+uv run --project mcp\autocad-mcp-server --extra dev pytest mcp\autocad-mcp-server\tests -q
 .\scripts\smoke.ps1
 ```
 

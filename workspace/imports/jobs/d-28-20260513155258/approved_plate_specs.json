@@ -560,12 +560,12 @@
       "slots": [],
       "corner_reliefs": [
         {
-          "corner": "bottom_left_inner",
+          "corner": "bottom_left",
           "radius": 20,
           "relief_type": "round"
         },
         {
-          "corner": "bottom_right_inner",
+          "corner": "bottom_right",
           "radius": 20,
           "relief_type": "round"
         }
@@ -961,18 +961,7 @@
         }
       ],
       "slots": [],
-      "corner_reliefs": [
-        {
-          "corner": "top_left",
-          "radius": 50,
-          "relief_type": "round"
-        },
-        {
-          "corner": "top_right",
-          "radius": 50,
-          "relief_type": "round"
-        }
-      ],
+      "corner_reliefs": [],
       "contour_type": "polygon",
       "confidence": 0.82,
       "evidence": "Page 32 title block: R4-11-314, PL50*5, QTY 6, length 430. Front view flat length 340 with 6*D11 and 2*D13; top view shows 50 mm upstand/offset both ends and 240 mm middle.",

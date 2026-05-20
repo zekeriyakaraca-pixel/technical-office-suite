@@ -1,6 +1,6 @@
 {
   "approved_by": "teknik-ofis-muduru",
-  "approved_at": "2026-05-14T13:20:26.920327+03:00",
+  "approved_at": "2026-05-20T17:40:29.462956+03:00",
   "plates": [
     {
       "poz_no": "APP100",
@@ -21,8 +21,9 @@
       ],
       "slots": [],
       "corner_reliefs": [],
+      "polygon_vertices": null,
       "source_page": 1,
-      "confidence": 1.0,
+      "confidence": 0.5,
       "notes": [
         "manager_approved_from_visual_candidate"
       ],

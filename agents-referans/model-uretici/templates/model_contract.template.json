@@ -1,0 +1,57 @@
+{
+  "_template_name": "canonical_outputs_model_contract",
+  "_template_version": "2026-04-27",
+  "_usage": "model-uretici fills this template from structured analysis. Do not put drawing geometry in requirements/template.json. Unresolved TODO_SOURCE_REQUIRED values must fail validation.",
+  "project": "TODO_SOURCE_REQUIRED",
+  "generated": "TODO_SOURCE_REQUIRED",
+  "global_confidence": "TODO_SOURCE_REQUIRED",
+  "confidence_gate": "TODO_SOURCE_REQUIRED",
+  "contract_version": "2026-04-27",
+  "analysis_payload": {
+    "path": "TODO_SOURCE_REQUIRED",
+    "status_path": "TODO_SOURCE_REQUIRED"
+  },
+  "columns": [],
+  "beams": [],
+  "plates": [],
+  "holes": [],
+  "welds": [],
+  "assembly": {
+    "type": "TODO_SOURCE_REQUIRED",
+    "main_part": "TODO_SOURCE_REQUIRED",
+    "sub_parts": [],
+    "welds": []
+  },
+  "source_trace": {
+    "required_elements": [],
+    "fields": {
+      "columns.COL-1.profile": {
+        "source_type": "TODO_SOURCE_REQUIRED",
+        "reference": "TODO_SOURCE_REQUIRED",
+        "confidence": "TODO_SOURCE_REQUIRED"
+      },
+      "columns.COL-1.net_length_mm": {
+        "source_type": "TODO_SOURCE_REQUIRED",
+        "reference": "TODO_SOURCE_REQUIRED",
+        "confidence": "TODO_SOURCE_REQUIRED"
+      },
+      "plates.BP-1.thickness_mm": {
+        "source_type": "TODO_SOURCE_REQUIRED",
+        "reference": "TODO_SOURCE_REQUIRED",
+        "confidence": "TODO_SOURCE_REQUIRED"
+      },
+      "plates.BP-1.holes.positions": {
+        "source_type": "TODO_SOURCE_REQUIRED",
+        "reference": "TODO_SOURCE_REQUIRED",
+        "confidence": "TODO_SOURCE_REQUIRED"
+      }
+    }
+  },
+  "validation": {
+    "contract_status": "TEMPLATE_NOT_VALID_FOR_EXECUTION",
+    "validator": "scripts/validate_model_contract.py",
+    "checked_at": "TODO_SOURCE_REQUIRED",
+    "errors": [],
+    "warnings": []
+  }
+}

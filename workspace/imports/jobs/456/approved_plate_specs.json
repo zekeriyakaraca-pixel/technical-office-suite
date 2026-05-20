@@ -1,0 +1,137 @@
+{
+  "approved_by": "teknik-ofis-muduru",
+  "approved_at": "2026-05-20T17:21:41.703154+03:00",
+  "plates": [
+    {
+      "poz_no": "4042",
+      "width": 156.5,
+      "height": 175.0,
+      "thickness": 10.0,
+      "material": "S355JR",
+      "quantity": 2,
+      "unit_surface_area_m2": null,
+      "unit_weight_kg": null,
+      "unit": "mm",
+      "holes": [
+        {
+          "x": 85.0,
+          "y": 98.5,
+          "diameter": 17.0
+        },
+        {
+          "x": 114.5,
+          "y": 109.0,
+          "diameter": 17.0
+        }
+      ],
+      "slots": [],
+      "corner_reliefs": [
+        {
+          "corner": "bottom_left",
+          "radius": 10.0,
+          "relief_type": "chamfer",
+          "x_offset": 10.0,
+          "y_offset": 10.0
+        },
+        {
+          "corner": "bottom_right",
+          "radius": 10.0,
+          "relief_type": "chamfer",
+          "x_offset": 10.5,
+          "y_offset": 10.0
+        }
+      ],
+      "polygon_vertices": [
+        {
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "x": 150.5,
+          "y": 0.0
+        },
+        {
+          "x": 156.5,
+          "y": 10.0
+        },
+        {
+          "x": 156.5,
+          "y": 136.0
+        },
+        {
+          "x": 111.0,
+          "y": 175.0
+        },
+        {
+          "x": 0.0,
+          "y": 100.0
+        },
+        {
+          "x": 0.0,
+          "y": 10.0
+        }
+      ],
+      "source_page": 1,
+      "confidence": 0.78,
+      "notes": [
+        "manager_approved_from_visual_candidate",
+        "manager_corrected_lower_hole_y_from_75_to_98_5",
+        "manager_corrected_hole_1:85,98.5->85,98.5"
+      ],
+      "source_pdf": "4042.pdf",
+      "source_trace": {
+        "source_pdf": "4042.pdf",
+        "source_page": 1,
+        "method": "codex_cli_polygon_refinement",
+        "microzoom_manifest_path": ".state/codex-runs/456-b63c3580/_microzoom_manifest.json",
+        "evidence_images": [
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-top_left.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-top_right.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-bottom_left.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-bottom_right.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-center.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r1_c1.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r1_c2.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r1_c3.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r2_c1.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r2_c2.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r2_c3.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r3_c1.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r3_c2.png",
+          ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r3_c3.png"
+        ]
+      },
+      "analysis_confidence": 0.78,
+      "uncertainties": [
+        "Hole centers were corrected by manager/user review: lower hole x=85, y=98.5; upper hole x=114.5, y=109.",
+        "Top chain supports apex x=111 and right extent x=156.5, while the lower chain reads 85+29.5+42.5=157, creating a 0.5 mm discrepancy against the listed length 156.5.",
+        "Right upper vertical/edge location is interpreted as x=156.5 with y=136 from the right-side 136 dimension and the 39/42.5 nearby dimensions.",
+        "Bottom-right chamfer uses the visible 10.5 horizontal and 10 vertical offsets plus the 6 mm terminal right offset; exact relation to the sloped right side remains drawing-derived."
+      ],
+      "microzoom_manifest_path": ".state/codex-runs/456-b63c3580/_microzoom_manifest.json",
+      "evidence_images": [
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-top_left.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-top_right.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-bottom_left.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-bottom_right.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-center.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r1_c1.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r1_c2.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r1_c3.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r2_c1.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r2_c2.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r2_c3.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r3_c1.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r3_c2.png",
+        ".state/codex-runs/456-b63c3580/microzoom/4042-p1-grid_r3_c3.png"
+      ],
+      "provider": "codex_cli",
+      "approval_required": true,
+      "dimension_chain_warnings": [
+        "dimension_chain_warning: Hole centers are interpreted from dimension chains rather than a single shared ordinate baseline: lower hole x=85, y=75; upper hole x=114.5, y=109.",
+        "dimension_chain_warning: Top chain supports apex x=111 and right extent x=156.5, while the lower chain reads 85+29.5+42.5=157, creating a 0.5 mm discrepancy against the listed length 156.5.",
+        "dimension_chain_warning: Right upper vertical/edge location is interpreted as x=156.5 with y=136 from the right-side 136 dimension and the 39/42.5 nearby dimensions."
+      ]
+    }
+  ]
+}

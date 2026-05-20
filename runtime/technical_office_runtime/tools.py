@@ -10,11 +10,13 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .audit import get_audit_logger
+from .approval_validation import validate_approved_rows
 from .completion import append_job_event, complete_approved_job, notify_job_blocked
 from .config import RuntimePaths, ensure_autocad_import_path
 from .job_fsm import JobState, get_fsm
 from .job_runner import format_job_summary, run_pipeline_command
 from .registry import active_agents, load_registry, relative_to_suite
+from .state_io import atomic_write_json
 
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -53,7 +55,7 @@ class ToolRegistry:
                 {
                     "type": "object",
                     "properties": {
-                        "job_id": {"type": "string", "description": "Unique job identifier, e.g. danieli-1701"},
+                        "job_id": {"type": "string", "description": "Unique job identifier, e.g. job-001"},
                         "project_name": {"type": "string", "description": "Human-readable project name"},
                     },
                     "required": ["job_id"],
@@ -241,7 +243,7 @@ class ToolRegistry:
             "created_at": datetime.now().astimezone().isoformat(),
         }
         job_json_path = job_dir / "job.json"
-        job_json_path.write_text(json.dumps(job_meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write_json(job_json_path, job_meta)
         return {
             "ok": True,
             "job_id": job_id,
@@ -444,31 +446,23 @@ class ToolRegistry:
         if not job_dir.exists():
             return _job_not_found(self.paths, job_id)
         normalized_rows = _normalize_candidate_rows_for_job(rows, job_dir)
-        for row in normalized_rows:
-            if not isinstance(row, dict):
-                continue
-            clean_reliefs = []
-            for relief in row.get("corner_reliefs") or []:
-                if not isinstance(relief, dict):
-                    continue
-                rtype = str(relief.get("relief_type") or relief.get("type") or "")
-                if _normalize_relief_type(rtype) == "polygon_contour" or not relief.get("corner"):
-                    continue  # polygon_contour sentinel veya eksik corner — atla
-                relief["relief_type"] = _normalize_relief_type(rtype or "chamfer")
-                clean_reliefs.append(relief)
-            row["corner_reliefs"] = clean_reliefs
+        validated_rows, validation_errors = validate_approved_rows(normalized_rows, self.paths, job_id)
+        if validation_errors:
+            return {
+                "ok": False,
+                "error": "candidate_validation_failed",
+                "validation_errors": validation_errors,
+                "job_id": job_id,
+            }
         approval = {
             "approved_by": "teknik-ofis-muduru",
             "approved_at": datetime.now().astimezone().isoformat(),
-            "plates": normalized_rows,
+            "plates": validated_rows,
         }
-        (job_dir / "approved_plate_specs.json").write_text(
-            json.dumps(approval, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        atomic_write_json(job_dir / "approved_plate_specs.json", approval)
         fsm = get_fsm(self.paths.jobs_output_root)
         fsm.force_transition(job_id, JobState.PRODUCING, reason="manager_approved_via_chat")
-        append_job_event(self.paths, job_id, "production_started", {"approved_count": len(normalized_rows)})
+        append_job_event(self.paths, job_id, "production_started", {"approved_count": len(validated_rows)})
         pipeline = self.run_autocad_job({"job_id": job_id, "autocad_live_policy": "off"})
         if not pipeline.get("ok"):
             blocked = notify_job_blocked(
@@ -509,25 +503,25 @@ class ToolRegistry:
             return {
                 "ok": False,
                 "job_id": job_id,
-                "approved_count": len(normalized_rows),
+                "approved_count": len(validated_rows),
                 "pipeline_summary": pipeline.get("message", ""),
                 "summary": summary,
                 "error": blocked.get("error"),
                 "message": blocked.get("message"),
             }
-        poz_nos = [str(p.get("poz_no", "")) for p in normalized_rows if isinstance(p, dict)]
-        get_audit_logger(self.paths.workspace_root).log_approval(job_id, "teknik-ofis-muduru", len(normalized_rows), poz_nos)
+        poz_nos = [str(p.get("poz_no", "")) for p in validated_rows if isinstance(p, dict)]
+        get_audit_logger(self.paths.workspace_root).log_approval(job_id, "teknik-ofis-muduru", len(validated_rows), poz_nos)
         completion = complete_approved_job(
             self.paths,
             job_id,
             summary,
-            approved_count=len(normalized_rows),
+            approved_count=len(validated_rows),
             session_id=str(args.get("session_id") or ""),
         )
         return {
             "ok": bool(completion.get("ok")),
             "job_id": job_id,
-            "approved_count": len(normalized_rows),
+            "approved_count": len(validated_rows),
             "pipeline_summary": pipeline.get("message", ""),
             "summary": summary,
             "partlist": completion.get("partlist"),
@@ -581,15 +575,6 @@ def _normalize_candidate_rows_for_job(rows: list[Any], job_dir: Path) -> list[di
             item["source_pdf"] = single_pdf
         normalized.append(item)
     return normalized
-
-
-def _normalize_relief_type(value: str) -> str:
-    normalized = value.strip().lower()
-    if normalized in {"pah", "bevel", "beveled", "chamfered"}:
-        return "chamfer"
-    if normalized in {"round_relief", "rounded", "radius"}:
-        return "round"
-    return normalized or "chamfer"
 
 
 def _required_string(args: dict[str, Any], name: str) -> str:

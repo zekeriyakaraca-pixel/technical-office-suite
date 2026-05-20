@@ -23,6 +23,8 @@ AutoCAD plaka uretim hattinda bagimsiz kalite kontrol yapmak; DXF 2013 ve DSTV N
 |-------|------|-------------|
 | Cizim/NC Kalite Kontrolu | `../_shared/skills/CIZIM_NC_KALITE_KONTROLU.md` | QC guvenilirligi |
 | PDF Poz Okuma | `../_shared/skills/PDF_POZ_OKUMA.md` | Yalnizca QC uyusmazliginda capraz kontrol |
+| Gorsel Analiz Protokolu | `../_shared/skills/GORSEL_ANALIZ_PROTOKOLU.md` | QC guvenilirligi |
+| Mikro Zoom Protokolu | `../_shared/skills/MIKRO_ZOOM_PROTOKOLU.md` | QC guvenilirligi |
 | Ogrenme ve Hafiza Yonetimi | `../_shared/skills/OGRENME_VE_HAFIZA_YONETIMI.md` | QC guvenilirligi |
 
 ## Input Contract
@@ -42,6 +44,7 @@ AutoCAD plaka uretim hattinda bagimsiz kalite kontrol yapmak; DXF 2013 ve DSTV N
 
 ## Manual Review Davranisi
 - PDF metin katmani okunamiyor, gorsel/OCR aday gerekiyor veya `manual_review_required` varsa QC uretim/teslim kapisini kapali tutar.
+- Gorsel adaydan gelen approved spec icin `source_trace`, `microzoom_manifest_path`, `evidence_images` veya mudur onayi eksikse QC uretim/teslim kapisini kapali tutar.
 - QC ajani bu durumda kullaniciya "OCR ac", "vision provider enable et" veya benzeri sistem ayari talimati vermez.
 - Dogru cevap kalibi: `QC karari: uretim/teslim kapali. Teknik ofis muduru gorsel/OCR aday okuma veya manuel poz/olcu girisi akisina karar vermeli. Mudur onayi ve QC ok=true olmadan partlist/teslim acilmaz.`
 

@@ -5,7 +5,10 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from technical_office_runtime.auth import create_file_token, create_token
 from technical_office_runtime.app import app
+from technical_office_runtime.cli import main as cli_main
+from technical_office_runtime.rate_limit import reset_rate_limits
 
 
 client = TestClient(app)
@@ -159,6 +162,8 @@ def test_dashboard_root_renders_2d_runtime():
     assert "AbortController" in response.text
     assert "CHAT_TIMEOUT_MS = 210000" in response.text
     assert "Mudur cevabi gecikti" in response.text
+    assert "candidateBlocked" in response.text
+    assert "blocking_validation_errors" in response.text
 
 
 def test_manager_chat_persists_dashboard_session(monkeypatch):
@@ -696,6 +701,145 @@ def test_job_events_replay_terminal_stream_finishes():
 
     assert '"type": "started"' in text
     assert '"type": "completed"' in text
+
+
+def test_auth_required_mode_protects_job_endpoints(monkeypatch):
+    monkeypatch.setenv("TOFFICE_API_SECRET", "test-secret")
+
+    blocked = client.get("/api/jobs")
+    token = create_token(expires_hours=1)
+    allowed = client.get("/api/jobs", headers={"Authorization": f"Bearer {token}"})
+
+    assert blocked.status_code == 401
+    assert allowed.status_code == 200
+
+
+def test_cli_token_create_requires_secret(monkeypatch, capsys):
+    monkeypatch.delenv("TOFFICE_API_SECRET", raising=False)
+
+    code = cli_main(["token", "create", "--hours", "24"])
+
+    assert code == 2
+    assert "TOFFICE_API_SECRET" in capsys.readouterr().err
+
+
+def test_cli_token_create_writes_token(monkeypatch, capsys):
+    monkeypatch.setenv("TOFFICE_API_SECRET", "test-secret")
+
+    code = cli_main(["token", "create", "--hours", "1"])
+
+    assert code == 0
+    assert ":" in capsys.readouterr().out.strip()
+
+
+def test_file_ticket_allows_preview_without_authorization_header(monkeypatch):
+    monkeypatch.setenv("TOFFICE_API_SECRET", "test-secret")
+    job_id = "api-file-ticket"
+    suite_root = Path(__file__).resolve().parents[2]
+    job_dir = suite_root / "workspace" / "imports" / "jobs" / job_id
+    output_dir = suite_root / "workspace" / "outputs" / "jobs" / job_id
+    _cleanup_dir(job_dir)
+    _cleanup_dir(output_dir)
+    job_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text('{"job_id":"api-file-ticket","project_name":"API File Ticket"}', encoding="utf-8")
+    (job_dir / "input.pdf").write_bytes(_vector_pdf_bytes(["POZ: P100"]))
+    (job_dir / "other.pdf").write_bytes(_vector_pdf_bytes(["POZ: P200"]))
+
+    denied = client.get(f"/api/jobs/{job_id}/files/input.pdf")
+    bearer = create_token(expires_hours=1)
+    ticket = client.post(
+        f"/api/jobs/{job_id}/file-ticket",
+        headers={"Authorization": f"Bearer {bearer}"},
+        json={"path": "input.pdf", "inline": True},
+    )
+    allowed = client.get(ticket.json()["url"])
+    wrong_path = client.get(f"/api/jobs/{job_id}/files/other.pdf?file_token={ticket.json()['url'].split('file_token=')[1]}")
+    expired = create_file_token(job_id, "input.pdf", inline=True, expires_seconds=-1)
+    expired_response = client.get(f"/api/jobs/{job_id}/files/input.pdf?inline=true&file_token={expired}")
+
+    assert denied.status_code == 401
+    assert ticket.status_code == 200
+    assert allowed.status_code == 200
+    assert allowed.headers["content-disposition"].startswith("inline;")
+    assert wrong_path.status_code == 401
+    assert expired_response.status_code == 401
+    _cleanup_dir(job_dir)
+    _cleanup_dir(output_dir)
+
+
+def test_file_path_resolution_blocks_traversal_and_ambiguous_basename():
+    job_id = "api-path-resolution"
+    suite_root = Path(__file__).resolve().parents[2]
+    job_dir = suite_root / "workspace" / "imports" / "jobs" / job_id
+    output_dir = suite_root / "workspace" / "outputs" / "jobs" / job_id
+    _cleanup_dir(job_dir)
+    _cleanup_dir(output_dir)
+    job_dir.mkdir(parents=True)
+    (job_dir / "job.json").write_text('{"job_id":"api-path-resolution","project_name":"API Path"}', encoding="utf-8")
+    (output_dir / "a").mkdir(parents=True)
+    (output_dir / "b").mkdir(parents=True)
+    (output_dir / "a" / "same.dxf").write_text("a", encoding="utf-8")
+    (output_dir / "b" / "same.dxf").write_text("b", encoding="utf-8")
+
+    traversal = client.get(f"/api/jobs/{job_id}/files/%2e%2e/secret.txt")
+    ambiguous = client.get(f"/api/jobs/{job_id}/files/same.dxf")
+    exact = client.get(f"/api/jobs/{job_id}/files/a/same.dxf")
+
+    assert traversal.status_code == 400
+    assert ambiguous.status_code == 409
+    assert exact.status_code == 200
+    _cleanup_dir(job_dir)
+    _cleanup_dir(output_dir)
+
+
+def test_upload_size_limit_returns_413(monkeypatch):
+    monkeypatch.setenv("TOFFICE_MAX_UPLOAD_MB", "0.0001")
+    job_id = "api-upload-too-large"
+    suite_root = Path(__file__).resolve().parents[2]
+    job_dir = suite_root / "workspace" / "imports" / "jobs" / job_id
+    output_dir = suite_root / "workspace" / "outputs" / "jobs" / job_id
+    _cleanup_dir(job_dir)
+    _cleanup_dir(output_dir)
+
+    response = client.post(
+        "/api/jobs",
+        data={"project_name": "Too Large", "job_id": job_id},
+        files={"pdf_files": ("input.pdf", _vector_pdf_bytes(["POZ: BIG"]), "application/pdf")},
+    )
+
+    assert response.status_code == 413
+    _cleanup_dir(job_dir)
+    _cleanup_dir(output_dir)
+
+
+def test_rate_limit_returns_429(monkeypatch):
+    monkeypatch.setenv("TOFFICE_RATE_LIMIT_DISABLED", "0")
+    monkeypatch.delenv("TOFFICE_API_SECRET", raising=False)
+    reset_rate_limits()
+
+    last = None
+    for _ in range(121):
+        last = client.post("/api/jobs/missing-job/file-ticket", json={"path": "missing.pdf"})
+
+    assert last is not None
+    assert last.status_code == 429
+    assert last.json()["error"] == "rate_limited"
+
+
+def test_runtime_logic_has_no_demo_job_id():
+    suite_root = Path(__file__).resolve().parents[2]
+    runtime_root = suite_root / "runtime" / "technical_office_runtime"
+
+    matches = [
+        path
+        for path in runtime_root.rglob("*")
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix in {".py", ".html"}
+        and "danieli-1701" in path.read_text(encoding="utf-8", errors="ignore")
+    ]
+
+    assert matches == []
 
 
 def _vector_pdf_bytes(text_lines: list[str]) -> bytes:

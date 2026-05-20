@@ -1,0 +1,159 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "rotation",
+    "rotation_reasoning",
+    "rotation_confidence",
+    "bom",
+    "section_labels",
+    "main_dimensions",
+    "holes",
+    "profile_name",
+    "uncertainties",
+    "source_trace"
+  ],
+  "properties": {
+    "rotation": {
+      "type": "string",
+      "enum": ["TOP", "FRONT", "BEHIND", "BELOW", "UNKNOWN"]
+    },
+    "rotation_reasoning": {
+      "type": "string"
+    },
+    "rotation_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "bom": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mark",
+          "quantity",
+          "profile",
+          "material",
+          "length_mm",
+          "description",
+          "source_text",
+          "confidence"
+        ],
+        "properties": {
+          "mark": { "type": ["string", "null"] },
+          "quantity": { "type": ["number", "null"] },
+          "profile": { "type": ["string", "null"] },
+          "material": { "type": ["string", "null"] },
+          "length_mm": { "type": ["number", "null"] },
+          "description": { "type": ["string", "null"] },
+          "source_text": { "type": ["string", "null"] },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "section_labels": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "main_dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimensions", "notes"],
+      "properties": {
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "label",
+              "value_mm",
+              "raw_text",
+              "direction",
+              "view",
+              "source",
+              "confidence"
+            ],
+            "properties": {
+              "label": { "type": ["string", "null"] },
+              "value_mm": { "type": ["number", "null"] },
+              "raw_text": { "type": ["string", "null"] },
+              "direction": { "type": ["string", "null"] },
+              "view": { "type": ["string", "null"] },
+              "source": { "type": ["string", "null"] },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "holes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "count",
+          "diameter_mm",
+          "spacing_mm",
+          "edge_distance_mm",
+          "position_description",
+          "view",
+          "source",
+          "confidence"
+        ],
+        "properties": {
+          "label": { "type": ["string", "null"] },
+          "count": { "type": ["number", "null"] },
+          "diameter_mm": { "type": ["number", "null"] },
+          "spacing_mm": { "type": ["number", "null"] },
+          "edge_distance_mm": { "type": ["number", "null"] },
+          "position_description": { "type": ["string", "null"] },
+          "view": { "type": ["string", "null"] },
+          "source": { "type": ["string", "null"] },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "profile_name": {
+      "type": ["string", "null"]
+    },
+    "uncertainties": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "source_trace": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["image", "page", "region", "note"],
+        "properties": {
+          "image": { "type": ["string", "null"] },
+          "page": { "type": ["number", "null"] },
+          "region": { "type": ["string", "null"] },
+          "note": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

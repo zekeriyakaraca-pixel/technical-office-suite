@@ -22,6 +22,8 @@ PDF kaynaklı plaka işlerinden poz bilgisi ve geometri çıkararak AutoCAD 2013
 |-------|------|-------------|
 | PDF Poz Okuma | `../_shared/skills/PDF_POZ_OKUMA.md` | Hız |
 | Plaka Geometri Çıkarma | `../_shared/skills/PLAKA_GEOMETRI_CIKARMA.md` | Çizim Doğruluğu |
+| Gorsel Analiz Protokolu | `../_shared/skills/GORSEL_ANALIZ_PROTOKOLU.md` | Çizim Doğruluğu |
+| Mikro Zoom Protokolu | `../_shared/skills/MIKRO_ZOOM_PROTOKOLU.md` | Çizim Doğruluğu |
 | DXF 2013 Üretimi | `../_shared/skills/DXF_2013_URETIMI.md` | Üretim Tamlığı |
 | DSTV NC1 Üretimi | `../_shared/skills/DSTV_NC1_URETIMI.md` | Üretim Tamlığı |
 | Öğrenme ve Hafıza Yönetimi | `../_shared/skills/OGRENME_VE_HAFIZA_YONETIMI.md` | Çizim Doğruluğu |
@@ -45,9 +47,16 @@ PDF kaynaklı plaka işlerinden poz bilgisi ve geometri çıkararak AutoCAD 2013
 - Her güvenli poz için aynı adla DXF 2013 ve NC1 dosyası üretilir.
 - Belirsiz PDF'ler `manual_review_required` olarak durdurulur.
 
+## Gorsel Aday Kurallari
+- Gorsel aday uretirken yalnizca gorulen olcu, poz, delik, slot, pah ve poligon bilgisini yaz; tahmin yapma.
+- Her aday `source_trace`, `analysis_confidence`, `uncertainties`, `microzoom_manifest_path`, `evidence_images` ve `approval_required=true` tasir.
+- Mikro-zoom manifesti olmayan aday uretime degil, `manual_review_required` durumuna gider.
+- Pah/poligon/kose bosaltma goruluyorsa `corner_reliefs` veya kontur notu bos birakilmaz.
+
 ## What This Agent Should Never Do
 - PDF'de bulunmayan delik konumunu uydurmak.
 - QC `ok=false` olan çıktıyı teslim etmek.
+- Gorsel adaylari mudur onayi olmadan `approved_plate_specs.json` gercegi gibi kullanmak.
 
 ## Duplication Notes
 - autocad-uzman-1 ile aynı üretim rolündedir; paralel iş kapasitesi için eklendi.

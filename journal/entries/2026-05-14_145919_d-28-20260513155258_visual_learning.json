@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "event_type": "manager_approved_visual_pdf_candidate",
+  "job_id": "d-28-20260513155258",
+  "approved_poz_count": 24,
+  "pattern_fingerprints": [
+    "text_vector_readable|pages=32|vectors=dense|text=ok"
+  ],
+  "output_dir": "C:\\Users\\elekc\\OneDrive\\Masaüstü\\programlar\\programlar\\GUNCELLEME\\technical-office-suite\\workspace\\outputs\\jobs\\d-28-20260513155258",
+  "approved_specs": [
+    "4023",
+    "4024",
+    "4026",
+    "4027",
+    "4028",
+    "4029",
+    "4031",
+    "4032",
+    "4035",
+    "4036",
+    "4037",
+    "4038",
+    "4039",
+    "4042",
+    "4043",
+    "4047",
+    "4055",
+    "4058",
+    "4061",
+    "4063",
+    "R4-11-311",
+    "R4-11-312",
+    "R4-11-313",
+    "R4-11-314"
+  ],
+  "created_at": "2026-05-14T14:59:19.878011+03:00"
+}

@@ -21,6 +21,11 @@
 - Bu durumda tek dogru yon: teknik-ofis-muduru'ne blocker bildirmek ve mudur onayli aday akisini beklemektir.
 - Kullanilacak cevap ozeti: `QC karari: uretim/teslim kapali. Teknik ofis muduru incelemesi gerekiyor. Mudur onayi ve QC ok=true olmadan partlist/teslim acilmaz.`
 
+## Visual Evidence Rules
+- Gorsel aday kaynakli spec'lerde `source_trace`, `microzoom_manifest_path`, `evidence_images` ve mudur onayi kapida kontrol edilir.
+- Kanit sozlesmesi eksik gorsel aday QC `ok=true` sayilmaz.
+- Eksik kanit varsa `GORSEL_ANALIZ_PROTOKOLU.md` ve `MIKRO_ZOOM_PROTOKOLU.md` referansiyla mudure blocker bildirilir.
+
 ## Sync Safety
 - QC raporlari poz klasoru altinda tutulur: `outputs/jobs/<job_id>/<poz_no>/<poz_no>_qc.json`
 - Uretim dosyalarini degistirmek yerine tum bulgular QC raporuna yazilir.

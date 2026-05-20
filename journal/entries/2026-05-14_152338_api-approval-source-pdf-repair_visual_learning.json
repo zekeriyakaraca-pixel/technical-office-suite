@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "event_type": "manager_approved_visual_pdf_candidate",
+  "job_id": "api-approval-source-pdf-repair",
+  "approved_poz_count": 1,
+  "pattern_fingerprints": [
+    "text_vector_readable|pages=1|vectors=light|text=too_short"
+  ],
+  "output_dir": "C:\\Users\\elekc\\OneDrive\\Masaüstü\\programlar\\programlar\\GUNCELLEME\\technical-office-suite\\workspace\\outputs\\jobs\\api-approval-source-pdf-repair",
+  "approved_specs": [
+    "FIX100"
+  ],
+  "created_at": "2026-05-14T15:23:38.261674+03:00"
+}

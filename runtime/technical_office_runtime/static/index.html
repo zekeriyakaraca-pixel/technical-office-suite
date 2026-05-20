@@ -90,6 +90,25 @@
     }
     section > * { position: relative; z-index: 1; }
     h1 { margin: 0; font-size: 22px; line-height: 1.1; letter-spacing: 0; font-weight: 650; }
+    .auth-panel {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .auth-panel input {
+      flex: 1 1 260px;
+      max-width: 520px;
+    }
+    .auth-panel button {
+      padding: 8px 10px;
+    }
+    .auth-status {
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 170px;
+    }
     h2 {
       display: flex;
       align-items: center;
@@ -183,6 +202,24 @@
     th, td { border-bottom: 1px solid var(--line); padding: 8px 7px; text-align: left; vertical-align: middle; color: #d5dee9; }
     th { color: #98a8ba; background: rgba(255,255,255,0.035); font-weight: 650; }
     tr:hover td { background: rgba(255,255,255,0.025); }
+    .candidate-detail td { background: rgba(255,255,255,0.018); }
+    .candidate-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(220px, 1fr));
+      gap: 10px;
+      align-items: start;
+    }
+    .candidate-detail textarea {
+      min-height: 74px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 12px;
+    }
+    .candidate-evidence {
+      grid-column: 1 / -1;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+    .candidate-warning { color: var(--warning); font-weight: 650; }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
     a.pdf-download {
@@ -537,6 +574,12 @@
         <div class="header-subtitle">Codex CLI bridge + deterministic DXF/NC1/QC pipeline</div>
       </div>
     </div>
+    <div class="auth-panel">
+      <span id="authStatus" class="auth-status">Auth kontrol ediliyor...</span>
+      <input id="authTokenInput" type="text" autocomplete="off" spellcheck="false" placeholder="Bearer token">
+      <button id="saveAuthToken" type="button">Token Kaydet</button>
+      <button id="clearAuthToken" class="secondary" type="button">Sil</button>
+    </div>
   </header>
   <div class="status-bar" id="systemBar">
     <span><span id="sysStatus">yükleniyor...</span></span>
@@ -551,7 +594,7 @@
       <h2>Yeni Is</h2>
       <form id="uploadForm">
         <label>Proje adi</label>
-        <input name="project_name" type="text" required placeholder="danieli-1701">
+        <input name="project_name" type="text" required placeholder="ornek-proje">
         <label>Job ID</label>
         <input name="job_id" type="text" placeholder="Bos birakilirsa otomatik">
         <label>PDF dosyalari</label>
@@ -641,9 +684,11 @@
     let managerHistory = [];
     const managerSessionId = 'agent:teknik-ofis-muduru:dashboard';
     const CHAT_TIMEOUT_MS = 210000;
+    const AUTH_TOKEN_STORAGE_KEY = '__TOFFICE_TOKEN_STORAGE_KEY__';
 
     let activeTab = 'ana-gorunum';
     let unreadLogCount = 0;
+    let authMode = 'open_local';
 
     function switchTab(name) {
       activeTab = name;
@@ -674,11 +719,55 @@
       qc_checking: 'QC Kontrol', completed: 'Tamamlandı', failed: 'Hata', retrying: 'Yeniden Deneniyor'
     };
 
+    function authToken() {
+      return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '';
+    }
+
+    function setAuthToken(token) {
+      const value = String(token || '').trim();
+      if (value) localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, value);
+      else localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+      updateAuthUi();
+    }
+
+    function updateAuthUi() {
+      const token = authToken();
+      const input = document.getElementById('authTokenInput');
+      if (input && input.value !== token) input.value = token;
+      const status = document.getElementById('authStatus');
+      if (status) {
+        status.textContent = authMode === 'token_required'
+          ? (token ? 'Auth: token hazir' : 'Auth: token gerekli')
+          : 'Auth: acik lokal mod';
+      }
+    }
+
+    function authHeaders(headers = {}) {
+      const merged = new Headers(headers || {});
+      const token = authToken();
+      if (token && !merged.has('Authorization')) merged.set('Authorization', `Bearer ${token}`);
+      return merged;
+    }
+
     async function api(path, options = {}) {
-      const res = await fetch(path, options);
+      const requestOptions = { ...options, headers: authHeaders(options.headers) };
+      const res = await fetch(path, requestOptions);
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || data.error || res.statusText);
+      if (!res.ok) {
+        const message = apiErrorMessage(data, res);
+        const error = new Error(message);
+        error.status = res.status;
+        error.data = data;
+        throw error;
+      }
       return data;
+    }
+
+    function apiErrorMessage(data, res) {
+      if (res.status === 401) return data.detail || 'Token gerekli veya gecersiz.';
+      if (res.status === 429) return `Rate limit asildi. ${data.retry_after_seconds || '?'} sn sonra tekrar deneyin.`;
+      if (res.status === 413) return data.detail || 'Yukleme boyutu siniri asildi.';
+      return data.detail || data.error || res.statusText || 'Islem tamamlanamadi.';
     }
 
     function escapeHtml(value) {
@@ -738,6 +827,8 @@
           document.getElementById('sysStatus').textContent = health.status === 'ready' ? 'Hazır ✓' : health.status;
           document.getElementById('sysActiveJobs').textContent = health.jobs_active ?? '-';
           document.getElementById('sysTotalJobs').textContent = health.jobs_total ?? '-';
+          authMode = health.auth?.mode || 'open_local';
+          updateAuthUi();
         }
         if (mem?.stats) {
           document.getElementById('sysPatterns').textContent = mem.stats.total_patterns ?? '-';
@@ -753,8 +844,14 @@
     }
 
     async function loadLearningHealth() {
-      const data = await api('/api/learning/health');
       const root = document.getElementById('learningHealth');
+      let data;
+      try {
+        data = await api('/api/learning/health');
+      } catch (err) {
+        root.textContent = err.status === 401 ? 'Learning Health icin token gerekli.' : (err.message || 'Learning Health okunamadi.');
+        return;
+      }
       const missing = data.jobs_missing_retrospective || [];
       const openNotes = data.jobs_with_open_notes || [];
       const proposals = data.pending_skill_proposals || {};
@@ -788,14 +885,24 @@
       document.getElementById('runJob').disabled = false;
       document.getElementById('createPartlist').disabled = false;
       setActionMessage('');
-      renderPdfs(data.job);
+      await renderPdfs(data.job);
       renderCandidates(data.job);
-      renderOutputs(data.job);
+      await renderOutputs(data.job);
       startEvents(jobId, data.job.events || []);
       await loadJobs();
     }
 
-    function renderPdfs(job) {
+    async function fileTicketUrl(filePath, inline = false) {
+      if (!selectedJob || !filePath) return '';
+      const data = await api(`/api/jobs/${encodeURIComponent(selectedJob)}/file-ticket`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: filePath, inline })
+      });
+      return data.url;
+    }
+
+    async function renderPdfs(job) {
       const links = document.getElementById('pdfLinks');
       const preview = document.getElementById('pdfPreview');
       links.innerHTML = '';
@@ -808,19 +915,23 @@
       pdfs.forEach((pdf, index) => {
         const link = document.createElement('a');
         link.className = 'pdf-download' + (index ? ' secondary' : '');
-        link.href = pdf.download_url;
+        link.href = '#';
         link.download = pdf.name;
         link.textContent = pdf.name;
+        link.onclick = async event => {
+          event.preventDefault();
+          window.location.href = await fileTicketUrl(pdf.path || pdf.name, false);
+        };
         links.appendChild(link);
       });
-      preview.src = pdfs[0].preview_url || pdfs[0].download_url;
+      preview.src = await fileTicketUrl(pdfs[0].path || pdfs[0].name, true);
     }
 
     function renderCandidates(job) {
       const root = document.getElementById('candidates');
       const codexList = job?.codex_candidates?.candidates || [];
       const detList = job?.extraction_candidates?.candidates || [];
-      document.getElementById('approveSelected').disabled = !(selectedJob && codexList.length);
+      document.getElementById('approveSelected').disabled = !(selectedJob && codexList.some(c => !candidateBlocked(c)));
 
       // Consensus warning
       let consensusHtml = '';
@@ -840,47 +951,112 @@
         return;
       }
       root.innerHTML = consensusHtml + `<div class="scroll"><table><thead><tr>
-        <th>Sec</th><th>ID</th><th>PDF</th><th>Poz</th><th>W</th><th>H</th><th>T</th><th>Malzeme</th><th>Adet</th><th>Güven</th>
+        <th>Sec</th><th>ID</th><th>PDF</th><th>Poz</th><th>W</th><th>H</th><th>T</th><th>Malzeme</th><th>Adet</th><th>Kontur</th><th>Guven</th>
       </tr></thead><tbody>${codexList.map((c, i) => {
         const confVal = Number(c.confidence || 0);
         const confColor = confVal >= 0.7 ? '#065f46' : confVal >= 0.4 ? '#92400e' : '#991b1b';
+        const contour = String(c.contour_type || '');
+        const polygonMissing = contour.toLowerCase().includes('polygon') && !Array.isArray(c.polygon_vertices);
+        const blockingErrors = Array.isArray(c.blocking_validation_errors) ? c.blocking_validation_errors : [];
+        const blocked = candidateBlocked(c);
+        const warning = [
+          polygonMissing ? 'Poligon kontur icin polygon_vertices eksik; gorsel analiz yeniden denenmeli veya vertex listesi mudur tarafindan netlestirilmeli.' : '',
+          ...blockingErrors
+        ].filter(Boolean).map(text => `<div class="candidate-warning">${escapeHtml(text)}</div>`).join('');
+        const uncertainties = Array.isArray(c.uncertainties) ? c.uncertainties.join('\n') : '';
+        const coordInferredIcon = c.coordinate_inferred
+          ? '<span title="Koordinat çıkarsandı — delik/ölçü pozisyonunu doğrulayın" style="color:#f59e0b;cursor:help">⚠</span>'
+          : '';
+        const dimWarnIcon = Array.isArray(c.dimension_chain_warnings) && c.dimension_chain_warnings.length
+          ? '<span title="Ölçü zinciri tutarsızlığı tespit edildi" style="color:#f59e0b;cursor:help">⚠</span>'
+          : '';
         return `<tr data-index="${i}">
-        <td><input type="checkbox" class="candidate-check" checked></td>
+        <td><input type="checkbox" class="candidate-check" ${blocked ? 'disabled' : 'checked'}></td>
         <td>${escapeHtml(c.candidate_id)}</td>
         <td>${escapeHtml(c.source_pdf || '')} p.${escapeHtml(c.source_page || '')}</td>
-        <td><input class="candidate-field compact" data-key="poz_no" value="${escapeHtml(c.poz_no || '')}"></td>
+        <td><input class="candidate-field compact" data-key="poz_no" value="${escapeHtml(c.poz_no || '')}">${coordInferredIcon}${dimWarnIcon}</td>
         <td><input class="candidate-field compact" data-key="width" type="number" value="${escapeHtml(c.width || '')}"></td>
         <td><input class="candidate-field compact" data-key="height" type="number" value="${escapeHtml(c.height || '')}"></td>
         <td><input class="candidate-field compact" data-key="thickness" type="number" value="${escapeHtml(c.thickness || '')}"></td>
         <td><input class="candidate-field compact" data-key="material" value="${escapeHtml(c.material || 'UNKNOWN')}"></td>
         <td><input class="candidate-field compact" data-key="quantity" type="number" value="${escapeHtml(c.quantity || 1)}"></td>
+        <td><input class="candidate-field compact" data-key="contour_type" value="${escapeHtml(contour)}"></td>
         <td style="color:${confColor};font-weight:600">${(confVal*100).toFixed(0)}%</td>
+      </tr>
+      <tr class="candidate-detail" data-index="${i}">
+        <td colspan="11">
+          <div class="candidate-detail-grid">
+            <label>corner_reliefs JSON
+              <textarea class="candidate-json" data-key="corner_reliefs">${escapeHtml(formatCandidateJson(c.corner_reliefs || []))}</textarea>
+            </label>
+            <label>polygon_vertices JSON
+              <textarea class="candidate-json" data-key="polygon_vertices">${escapeHtml(formatCandidateJson(c.polygon_vertices ?? null))}</textarea>
+            </label>
+            <div class="candidate-evidence">
+              ${warning}
+              <strong>Evidence:</strong> ${escapeHtml(c.evidence || '')}<br>
+              ${c.quality_status ? `<strong>Kalite:</strong> ${escapeHtml(c.quality_status)}<br>` : ''}
+              <strong>Uncertainty:</strong><br>${escapeHtml(uncertainties).replaceAll('\n', '<br>')}
+              ${Array.isArray(c.dimension_chain_warnings) && c.dimension_chain_warnings.length ? `<br><strong style="color:#f59e0b">⚠ Ölçü zinciri uyarısı:</strong><br>${escapeHtml(c.dimension_chain_warnings.join('\n')).replaceAll('\n', '<br>')}` : ''}
+              ${c.coordinate_inferred ? '<br><strong style="color:#f59e0b">⚠ Koordinat çıkarsandı — delik/ölçü pozisyonunu doğrulayın.</strong>' : ''}
+            </div>
+          </div>
+        </td>
       </tr>`;
       }).join('')}</tbody></table></div>`;
     }
 
+    function candidateBlocked(candidate) {
+      const contour = String(candidate?.contour_type || '').toLowerCase();
+      const polygonMissing = contour.includes('polygon') && !Array.isArray(candidate?.polygon_vertices);
+      const blocking = Array.isArray(candidate?.blocking_validation_errors) && candidate.blocking_validation_errors.length > 0;
+      return polygonMissing || blocking || candidate?.quality_status === 'blocked';
+    }
+
+    function formatCandidateJson(value) {
+      return JSON.stringify(value ?? null, null, 2);
+    }
+
     function editedCandidates() {
       const rows = Array.from(document.querySelectorAll('#candidates tbody tr'));
+      const primaryRows = rows.filter(row => !row.classList.contains('candidate-detail'));
       const source = selectedDetail?.codex_candidates?.candidates || [];
-      return rows.filter(row => row.querySelector('.candidate-check')?.checked).map(row => {
+      return primaryRows.filter(row => row.querySelector('.candidate-check')?.checked).map(row => {
         const item = { ...source[Number(row.dataset.index)] };
         row.querySelectorAll('.candidate-field').forEach(input => {
           const key = input.dataset.key;
           const numeric = ['width', 'height', 'thickness', 'quantity'].includes(key);
           item[key] = numeric ? Number(input.value) : input.value.trim();
         });
+        const detail = document.querySelector(`#candidates tr.candidate-detail[data-index="${row.dataset.index}"]`);
+        detail?.querySelectorAll('.candidate-json').forEach(input => {
+          item[input.dataset.key] = parseCandidateJsonField(input.value, input.dataset.key);
+        });
         return item;
       });
     }
 
-    function renderOutputs(job) {
+    function parseCandidateJsonField(value, key) {
+      const text = String(value || '').trim();
+      if (!text) return key === 'polygon_vertices' ? null : [];
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        throw new Error(`${key} JSON gecersiz: ${err.message}`);
+      }
+    }
+
+    async function renderOutputs(job) {
       const root = document.getElementById('outputs');
       const files = (job.files || []).filter(file => file.group === 'output');
       if (!files.length && !job.partlist) {
         root.textContent = 'Cikti yok.';
         return;
       }
-      const rows = files.map(file => `<tr><td>${escapeHtml(file.path)}</td><td>${escapeHtml(file.size_bytes)}</td><td><a href="${file.download_url}">indir</a></td></tr>`).join('');
+      const rows = (await Promise.all(files.map(async file => {
+        const url = await fileTicketUrl(file.path, false);
+        return `<tr><td>${escapeHtml(file.path)}</td><td>${escapeHtml(file.size_bytes)}</td><td><a href="${url}">indir</a></td></tr>`;
+      }))).join('');
       const partlist = job.partlist ? `<p><span class="pill ${job.partlist.ok ? 'ok' : 'warn'}">partlist ${job.partlist.ok ? 'ok' : 'beklemede'}</span></p>` : '';
       root.innerHTML = `${partlist}<div class="scroll"><table><thead><tr><th>Dosya</th><th>Byte</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
     }
@@ -890,7 +1066,11 @@
       const events = document.getElementById('events');
       const seenEvents = new Set((initialEvents || []).map(eventKey));
       events.textContent = (initialEvents || []).map(formatEvent).join('\n');
-      eventSource = new EventSource(`/api/events/${encodeURIComponent(jobId)}`);
+      const token = authToken();
+      const eventUrl = token
+        ? `/api/events/${encodeURIComponent(jobId)}?access_token=${encodeURIComponent(token)}`
+        : `/api/events/${encodeURIComponent(jobId)}`;
+      eventSource = new EventSource(eventUrl);
       eventSource.onmessage = event => {
         const parsed = JSON.parse(event.data);
         if (parsed.type === 'heartbeat') return;
@@ -922,7 +1102,11 @@
     }
 
     function formatEvent(event) {
-      return `${new Date(event.timestamp || Date.now()).toLocaleTimeString()} ${event.type} ${JSON.stringify(event.payload || {})}`;
+      const payload = event.payload || {};
+      const typeLabel = event.type === 'completed' && payload.status === 'needs_manager_approval'
+        ? 'awaiting_approval'
+        : event.type;
+      return `${new Date(event.timestamp || Date.now()).toLocaleTimeString()} ${typeLabel} ${JSON.stringify(payload)}`;
     }
 
     function eventKey(event) {
@@ -944,10 +1128,14 @@
 
     document.getElementById('uploadForm').onsubmit = async event => {
       event.preventDefault();
-      const form = new FormData(event.currentTarget);
-      const data = await api('/api/jobs', { method: 'POST', body: form });
-      await loadJobs();
-      await selectJob(data.job.job_id);
+      try {
+        const form = new FormData(event.currentTarget);
+        const data = await api('/api/jobs', { method: 'POST', body: form });
+        await loadJobs();
+        await selectJob(data.job.job_id);
+      } catch (err) {
+        setActionMessage(err.message || 'Yukleme tamamlanamadi.', 'error');
+      }
     };
 
     document.getElementById('refreshJobs').onclick = loadJobs;
@@ -1072,12 +1260,12 @@
     }
 
     document.getElementById('approveSelected').onclick = async () => {
-      const plates = editedCandidates();
-      if (!selectedJob || !plates.length) return;
       const button = document.getElementById('approveSelected');
-      button.disabled = true;
-      setActionMessage('Adaylar onaylaniyor...');
       try {
+        const plates = editedCandidates();
+        if (!selectedJob || !plates.length) return;
+        button.disabled = true;
+        setActionMessage('Adaylar onaylaniyor...');
         const data = await api(`/api/jobs/${encodeURIComponent(selectedJob)}/approve-candidates`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1085,10 +1273,13 @@
         });
         if (data.ok === false) {
           const errors = Array.isArray(data.validation_errors) ? data.validation_errors : [];
-          const cornerErrors = errors.filter(e => String(e.error || '').includes('corner_reliefs'));
-          if (cornerErrors.length) {
+          const geometryErrors = errors.filter(e => {
+            const text = String(e.error || '');
+            return text.includes('corner_reliefs') || text.includes('polygon_vertices');
+          });
+          if (geometryErrors.length) {
             setActionMessage(
-              'Kose bosaltma bilgisi eksik - Mudur Chat soru soruyor.',
+              'Kontur/kose bilgisi eksik - Mudur Chat soru soruyor.',
               'error'
             );
             button.disabled = false;
@@ -1096,7 +1287,7 @@
             await sendManagerStructuredTrigger({
               type: 'candidate_validation_blocked',
               job_id: selectedJob,
-              validation_errors: cornerErrors
+              validation_errors: geometryErrors
             });
             return;
           }
@@ -1138,6 +1329,24 @@
       document.getElementById('sendChat').click();
     });
 
+    document.getElementById('saveAuthToken').onclick = () => {
+      setAuthToken(document.getElementById('authTokenInput').value);
+      setActionMessage('Token kaydedildi.', 'ok');
+      loadJobs().catch(err => { document.getElementById('jobs').textContent = err.message; });
+      loadSystemStatus();
+      loadManagerSession();
+    };
+    document.getElementById('clearAuthToken').onclick = () => {
+      setAuthToken('');
+      setActionMessage('Token silindi.', 'ok');
+    };
+    document.getElementById('authTokenInput').addEventListener('keydown', event => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      document.getElementById('saveAuthToken').click();
+    });
+
+    updateAuthUi();
     loadManagerSession();
     loadLearningHealth().catch(() => {});
     loadJobs().catch(err => { document.getElementById('jobs').textContent = err.message; });

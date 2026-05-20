@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from .auth import create_token
 from .codex_bridge import inspect_codex, inspect_codex_mcp
 from .config import get_paths
 from .orchestrator import AgentOrchestrator
@@ -26,6 +27,8 @@ def main(argv: list[str] | None = None) -> int:
         return _agent_draft(args)
     if args.command == "agent" and args.agent_command == "approve":
         return _agent_approve(args)
+    if args.command == "token" and args.token_command == "create":
+        return _token_create(args)
     parser.print_help()
     return 1
 
@@ -52,6 +55,11 @@ def build_parser() -> argparse.ArgumentParser:
     draft.add_argument("title", nargs="+")
     approve = agent_sub.add_parser("approve", help="Activate an existing draft agent")
     approve.add_argument("draft_id")
+
+    token = sub.add_parser("token", help="Authentication token operations")
+    token_sub = token.add_subparsers(dest="token_command")
+    create = token_sub.add_parser("create", help="Create a dashboard/API bearer token")
+    create.add_argument("--hours", type=int, default=24)
     return parser
 
 
@@ -145,6 +153,15 @@ def _agent_approve(args: argparse.Namespace) -> int:
         return 0
     print(f"Approval failed: {result.get('error')}", file=sys.stderr)
     return 2
+
+
+def _token_create(args: argparse.Namespace) -> int:
+    try:
+        print(create_token(expires_hours=max(1, int(args.hours))))
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    return 0
 
 
 def _configure_console() -> None:

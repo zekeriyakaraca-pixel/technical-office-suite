@@ -1,7 +1,7 @@
 # CLAUDE.md - Technical Office Suite
 
 This file is the operating guide for agents working in this repository.
-Last checked against the codebase: 2026-05-14 (session 5 — LLM-first manager: Gemini as primary synthesizer for query/status/action responses; live job context injection; `_synthesize_query_with_gemini()`).
+Last checked against the codebase: 2026-05-20 (session 10 — manager chat stability: selected-job issue reports now stay deterministic instead of being rewritten by Gemini; `isle ilgili` is not treated as a run command; DXF/NC1 artifact geometry corrections such as hole coordinate fixes are local manager actions, not project/code edits; `_looks_like_hole_coordinate_correction_request()` + `_handle_hole_coordinate_correction()` patch approved specs, rerun production/QC, and resolve `delik koordinati` notes; 172 runtime tests and 190 MCP tests pass).
 
 ## Current Project Status
 
@@ -102,6 +102,7 @@ service with the `ezdxf` backend.
 | Manager Memory | `runtime/technical_office_runtime/manager_memory.py` | Persistent SQLite manager brain for job facts, decisions, recent turns, and Markdown vault export |
 | Agent Context | `runtime/technical_office_runtime/agent_context.py` | Loads agent brain + skill files into system prompt; `load_expert_agent_memories()` reads MEMORY.md and RULES.md from all 4 expert agents and injects them into the manager Codex and Gemini contexts |
 | Gemini Bridge | `runtime/technical_office_runtime/gemini_bridge.py` | HTTP client for Google Gemini 2.5 Flash; timeout 90 s; activated by `GEMINI_API_KEY` |
+| Chat Detectors | `runtime/technical_office_runtime/chat_detectors.py` | Pure text-pattern functions: all `_looks_like_*`, `_extract_*`, corner-relief parse helpers, and context-marker utilities extracted from `orchestrator.py` (~1 388 lines) |
 
 ## Runtime Workflow
 
@@ -219,11 +220,12 @@ When a new event arrives on the Event Stream while the user is on the Ana Görü
 - Generic job-list responses must not become the active job memory. "Bu is" should bind to an explicit selected job, an explicit job ID, or a prior job-specific turn.
 - The UI timeout is 210 seconds so longer Codex CLI manager work can finish without the browser aborting early.
 - Lightweight greetings, capability/status prompts, selected-job issue discussion, and safe job actions can be answered locally. The lightweight-greeting detector covers: "merhaba", "selam", "naber", "nasılsın", "iyi misin", "günaydın", "iyi günler", "iyi akşamlar", "iyi geceler", "görüşürüz", "hoşça kal", "sağol", "teşekkürler", "tamam anladım", and similar — none of these trigger Codex CLI.
-- **LLM-first query synthesis**: When `GEMINI_API_KEY` is set, local handlers for job status, manual review detail, issue discussion, job learning, page exclusion, and approved-spec-patch-restart all route their raw template output through `_synthesize_query_with_gemini()` before replying. Gemini receives the raw data block plus the user's question and produces a natural, decision-oriented manager-voice response. When Gemini is unavailable, the raw template is returned unchanged (full fallback compatibility).
+- **LLM-first query synthesis**: When `GEMINI_API_KEY` is set, local handlers for job status, manual review detail, job learning, page exclusion, and approved-spec-patch-restart may route their raw template output through `_synthesize_query_with_gemini()` before replying. Gemini receives the raw data block plus the user's question and produces a natural, decision-oriented manager-voice response. Critical selected-job issue reports must stay deterministic and return the local template directly so status, note-writing, and production gates cannot be softened or misphrased by an LLM rewrite.
 - **Gemini system prompt enrichment**: Every `_run_gemini_manager()` and `_synthesize_query_with_gemini()` call injects (1) expert agent memories from all 4 expert agent MEMORY.md/RULES.md files, (2) the last 3 successful extraction patterns from the memory bridge, and (3) a live job context block (`_build_live_job_context()`) with FSM state, project name, pipeline ok/produced/manual_review counts, Codex candidate count, approved-spec presence, recent failure details, and open manager notes.
 - **`_build_live_job_context(paths, job_id) -> str`**: Reads `fsm_state.json`, `job.json`, `job_summary.json`, `codex_candidates.json`, `approved_plate_specs.json`, `events.jsonl`, and open manager issue notes to build a `## Seçili İş:` block injected into Gemini's system prompt.
 - General substantive conversation (not a local handler match) uses Gemini as primary LLM when `GEMINI_API_KEY` is set; falls back to Codex CLI in read-only mode. Before calling Codex, the last 3 successful extraction patterns are read from the memory bridge and injected as "Son Başarılı Çizim Desenleri".
 - Explicit project/code/file edit requests use Codex CLI in workspace-write mode with a longer timeout, then report changed files and verification.
+- Selected-job DXF/NC1/QC artifact geometry issues are not project/code edit requests. Messages like "olusturulan DXF'te delik konumu hatali", "Poz 4042 alt delik X=85 Y=75 yerine X=85 Y=98.5 olmali", "pah/kose/poligon kontur hatali" must route to local manager handlers, not Codex CLI workspace-write.
 
 ### Sistem Logu — Diagnostics
 
@@ -245,8 +247,13 @@ When a new event arrives on the Event Stream while the user is on the Ana Görü
 ### Dashboard auth note
 
 - When `TOFFICE_API_SECRET` is unset, protected write endpoints run in open local mode.
-- When `TOFFICE_API_SECRET` is set, protected endpoints require `Authorization: Bearer <token>`.
-- The current dashboard does not expose a token input. In token-required mode, use an API client or add UI token support before relying on browser writes.
+- When `TOFFICE_API_SECRET` is set, job read/write, manager chat, file access, sessions, memory, audit, SLA, metrics/status, and admin-style endpoints require `Authorization: Bearer <token>`.
+- Create dashboard/API tokens with `.\scripts\toffice.ps1 token create --hours 24`.
+- The dashboard header has a bearer token input. It stores the token in browser `localStorage` under `toffice_api_token` and injects it into dashboard `fetch` calls.
+- PDF preview/download uses `POST /api/jobs/{job_id}/file-ticket` for short-lived URLs bound to job, relative file path, inline/download mode, and a 5 minute expiry.
+- Rate limiting is dependency-free and in-memory: upload `10 / 10 dakika`, manager chat `20 / dakika`, job mutations `30 / dakika`, file tickets `120 / dakika`. Tests can disable it with `TOFFICE_RATE_LIMIT_DISABLED=1`.
+- Upload limits default to 100 MB per PDF and 300 MB per job; override with `TOFFICE_MAX_UPLOAD_MB` and `TOFFICE_MAX_JOB_UPLOAD_MB`.
+- CORS origins can be configured with `TOFFICE_CORS_ORIGINS`; wildcard origins are not used with credentials.
 
 ## Manager Chat and Agent Behavior
 
@@ -262,6 +269,9 @@ When a new event arrives on the Event Stream while the user is on the Ana Görü
 - Page number extraction handles: single ("sayfa 3"), ordinal ("1. sayfa"), list ("sayfa 2 ve 3", "sayfa 1, 2 ve 3"), and range ("sayfa 2-4") forms.
 - Selected-job production problems such as missing pages, wrong poz counts, missing chamfers, or polygon/contour issues are recorded as manager issue notes instead of being mistaken for a rerun command.
 - Selected-job action requests such as "bu pozu duzeltelim", "tekrar uret", or "aksiyon zamani" are not handled as another issue-report prompt. The manager must resolve the latest relevant open note, patch approved specs when the geometry is known, rerun production/QC/finalizer, and report the concrete result.
+- The phrase `isle ilgili` means "about the job" and must not be interpreted as the imperative `isle` / "process this". Do not let `456 numarali isle ilgili hatalar var` trigger `run_autocad_job`.
+- Hole coordinate corrections are first-class local manager actions. `_looks_like_hole_coordinate_correction_request()` detects selected-job messages containing `delik`/`hole`, coordinate terms, and expected values; `_handle_hole_coordinate_correction()` must identify the job/poz/hole, patch `approved_plate_specs.json` `holes`, append/resolve a `delik koordinati` manager issue note, rerun production/QC, and keep the job `awaiting_approval` if any actionable manager notes remain.
+- Open manager issue notes with tags including `hata bildirimi`, `delik koordinati`, `pah/kose eksigi`, `poligon kontur`, `gorsel analiz notu`, `eksik uretim`, or `eksik sayfa/poz` are blocking signals. Even if `job_summary.ok == true`, status responses must say the job is not completed for delivery until those notes are resolved.
 - Job learning questions must first read `workspace/outputs/jobs/<job_id>/retrospective.json`; if it is missing but the job is eligible, offer or run learning backfill instead of claiming that the system learned from nowhere.
 - New agents are created as drafts under `agents/_drafts`; activation still requires explicit approval.
 - The manager operates with **proactive authority**: it selects and applies skills (IS_DAGITIMI, CIZIM_NC_KALITE_KONTROLU, OGRENME_VE_HAFIZA_YONETIMI) without waiting for the user to name them; it initiates visual analysis, QC, and partlist steps autonomously when the job state warrants it; it reports what it did and why. Only genuine technical ambiguity (low confidence + unknown geometry type) triggers an escalation question.
@@ -279,6 +289,7 @@ When a new event arrives on the Event Stream while the user is on the Ana Görü
 - `GET /api/jobs` - list jobs.
 - `GET /api/jobs/{job_id}` - inspect diagnostics, candidates, approvals, outputs, partlist, events, `fsm_state`, and reconciled `active_manual_review_count` / `active_manual_reviews` (pages covered by Codex candidates or excluded via `page_exclusions_applied.json` are removed from the active count dynamically).
 - `GET /api/jobs/{job_id}/files/{filename}` - download input or output files.
+- `POST /api/jobs/{job_id}/file-ticket` - create a short-lived file URL for dashboard iframe preview/download in token-required mode.
 - `POST /api/jobs/{job_id}/run` - run diagnostics/pipeline; idempotent guard blocks active jobs.
 - `POST /api/jobs/{job_id}/approve-candidates` - manager approval; auth required when enabled.
 - `POST /api/jobs/{job_id}/partlist` - create or block ERT partlist; auth required when enabled.
@@ -325,6 +336,7 @@ When a new event arrives on the Event Stream while the user is on the Ana Görü
 .\scripts\toffice.ps1 ask "test-001 isini AutoCAD live kapali calistir ve QC ozetle"
 .\scripts\toffice.ps1 job run test-001 --autocad off
 .\scripts\toffice.ps1 agent draft "Tekla DXF kontrol ajani"
+.\scripts\toffice.ps1 token create --hours 24
 ```
 
 `doctor` checks the local `codex.cmd` executable, ChatGPT login state,
@@ -489,9 +501,19 @@ for the full operation lists.
 - Completion retrospectives are stored under `workspace/outputs/jobs/<job_id>/retrospective.json`.
 - Skill promotion candidates are stored under `journal/skill_proposals/` and require explicit human approval before being copied into shared skills.
 - `corner_reliefs: [{"type": "polygon_contour"}]` is a valid resolved state for a candidate. It means the plate will be produced using a polygon contour method; QC does not require explicit corner dimensions for these candidates. Do not re-enter the corner-relief conversation loop for polygon-marked candidates.
-- `_synthesize_query_with_gemini(data_block, user_text, history, *, fallback_reason)` in `orchestrator.py` is the standard helper for routing local template data through Gemini for natural synthesis. Add new query handlers here rather than returning raw `AgentRunResult(content=template_string)`. When Gemini is absent it returns the template directly.
+- `_synthesize_query_with_gemini(data_block, user_text, history, *, fallback_reason)` in `orchestrator.py` is the standard helper for routing non-critical local template data through Gemini for natural synthesis. Add new read-only query handlers here rather than returning raw `AgentRunResult(content=template_string)`. Exception: selected-job issue reports and production gate decisions must return deterministic local text directly. When Gemini is absent it returns the template directly. The synthesis message explicitly forbids madde listesi, numaralı liste, and key:value format — Gemini must produce 2-4 sentence akıcı Türkçe paragraf. Do NOT weaken these format constraints.
 - `_build_live_job_context(paths, job_id)` in `orchestrator.py` reads the current job state from disk and returns a `## Seçili İş:` markdown block for Gemini's system prompt. It reads: `fsm_state.json`, `job.json`, `job_summary.json`, `codex_candidates.json`, `approved_plate_specs.json` (existence check), `events.jsonl` (last failure), and open manager issue notes.
-- `_normalize_relief_type()` has three copies: `approved_specs.py`, `app.py`, `tools.py`. All must stay in sync. Recognized input aliases: `pah/bevel/beveled/chamfered → chamfer`; `round_relief/rounded/radius → round`. `polygon_contour` is a sentinel and must be filtered at all read/write paths, never passed to `CornerReliefSpec`.
+- All `_looks_like_*`, `_extract_*`, corner-relief parse, and context-marker utility functions live in `chat_detectors.py`, not `orchestrator.py`. Add new text-pattern detectors there. `orchestrator.py` imports them via the named import block at the top of the file and keeps only functions that require `RuntimePaths` or external service calls.
+- `IN_PROGRESS_STATES` from `job_fsm.py` is the authoritative set of active FSM states. Do not re-define the states as a literal tuple or list elsewhere; always import and reference `IN_PROGRESS_STATES`.
+- `_render_candidate_pages()` in `app.py` returns `tuple[list[Path], list[dict]]` — `(full_page_images, evidence_meta)`. Both full-page PNGs and microzoom region PNGs are passed to `CodexRunRequest(images=all_images)`. Tests that call `_render_candidate_pages()` must unpack with `images, _evidence_meta = _render_candidate_pages(...)`.
+- `_candidate_prompt()` in `app.py` accepts `pdf_import_paths: list[str] | None` and `manifest_path: str | None` keyword args. Pass these from `_extract_codex_candidates()` so Codex knows which PDF files are being processed and where the microzoom manifest lives. The prompt also now instructs Codex to report coordinate inference and dimension chain inconsistencies in `uncertainties`.
+- `coordinate_inferred: bool` is set in `_normalize_candidate()` (app.py) by scanning `uncertainties` for "inferred", "çıkarım", "ambiguous", "belirsiz", "diagonal", and related keywords. The field is preserved through to `approved_plate_specs.json` and adds `"coordinate_inferred_from_uncertainty"` to `notes`. Dashboard shows a ⚠ amber icon in the poz_no cell when this flag is true.
+- `_dimension_chain_warnings(row)` in `approval_validation.py` scans `uncertainties` for dimension/chain/zincir keywords and returns non-blocking warning strings. Warnings are written to `data["dimension_chain_warnings"]` in `validate_approved_rows()`. Dashboard shows ⚠ icon and detail text in the evidence panel.
+- Confidence default in `approval_validation.py:83` uses `_raw_conf if (_raw_conf := _optional_float(...)) is not None else 0.5`. Do NOT revert to `or 1.0` — that masks missing confidence as maximum confidence.
+- Relief type normalization has one canonical source: `mcp/autocad-mcp-server/src/autocad_mcp/technical_office/relief_types.py`. Runtime code must call the thin wrapper in `runtime/technical_office_runtime/relief_types.py`. Recognized input aliases: `pah/bevel/beveled/chamfered -> chamfer`; `round_relief/rounded/radius -> round`. `polygon_contour` is a sentinel and must be filtered at all read/write paths, never passed to `CornerReliefSpec`.
+- `read_json(path, *, default=None)` in `state_io.py` is the canonical JSON file reader. Use it instead of inline `json.loads(path.read_text(...))`. It handles `FileNotFoundError` silently, logs `JSONDecodeError` and `OSError` via stdlib `logging`, and returns `default` on any failure. Do NOT add new inline `json.loads(path.read_text(...))` patterns in runtime code.
+- `chat_detectors.py` module-level compiled regex constants: `_RE_JOB_ID`, `_RE_POZ_NO`, `_RE_NUMERIC_REF`, `_RE_RADIUS_DOT`, `_RE_RADIUS_COMMA`, `_RE_DIM_PAIR`, `_RE_NUM_DOT`, `_RE_PROJECT_NAME`, `_RE_ISLE_WORD`, `_RE_URET_WORD`, `_RE_STEP_START`, `_RE_STEP_PATTERNS`. New regex patterns added to `chat_detectors.py` MUST be defined as module-level `_RE_*` compiled constants, not inline in function bodies.
+- `_DispatchEntry` + `_MANAGER_DISPATCH` in `orchestrator.py`: new local handlers for the teknik-ofis-muduru manager chat MUST be added to the `_MANAGER_DISPATCH` list (module level, before `AgentOrchestrator` class) rather than as inline `if _looks_like_X(text)` branches in `run()`. `_run_dispatch()` iterates the table in order — position matters. Handlers with `needs_session=True` receive `(text, history, session_id=session_id)`; handlers with `text_only=True` receive only `(text,)`; others receive `(text, history)`. Handlers that have conditional logic beyond a single detector call (e.g., `_looks_like_project_edit_request` which branches on `self.allow_codex`) must stay in `run()` directly.
 
 ## Parked 3D Office
 

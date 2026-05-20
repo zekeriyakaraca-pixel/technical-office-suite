@@ -9,6 +9,7 @@ from typing import Any
 
 
 FLOW_CORNER_RELIEF = "corner_relief_clarification"
+FLOW_MANAGER_ACTION_CONFIRMATION = "manager_action_confirmation"
 FLOW_OPEN = "open"
 FLOW_RESOLVED = "resolved"
 FLOW_CANCELLED = "cancelled"
@@ -25,6 +26,8 @@ class GuidedFlowState:
     pending_candidate_rows: list[dict[str, Any]] = field(default_factory=list)
     poz_nos: list[str] = field(default_factory=list)
     expected_fields: list[str] = field(default_factory=list)
+    action_type: str = ""
+    action_payload: dict[str, Any] = field(default_factory=dict)
     last_manager_prompt: str = ""
     suggested_resolution_text: str = ""
     created_at: str = field(default_factory=lambda: _now_iso())
@@ -41,6 +44,8 @@ class GuidedFlowState:
             "pending_candidate_rows": self.pending_candidate_rows,
             "poz_nos": self.poz_nos,
             "expected_fields": self.expected_fields,
+            "action_type": self.action_type,
+            "action_payload": self.action_payload,
             "last_manager_prompt": self.last_manager_prompt,
             "suggested_resolution_text": self.suggested_resolution_text,
             "created_at": self.created_at,
@@ -68,6 +73,8 @@ class GuidedFlowState:
             ],
             poz_nos=[str(item) for item in payload.get("poz_nos", []) if item is not None],
             expected_fields=[str(item) for item in payload.get("expected_fields", []) if item is not None],
+            action_type=str(payload.get("action_type") or ""),
+            action_payload=dict(payload.get("action_payload") or {}) if isinstance(payload.get("action_payload"), dict) else {},
             last_manager_prompt=str(payload.get("last_manager_prompt") or ""),
             suggested_resolution_text=str(payload.get("suggested_resolution_text") or ""),
             created_at=str(payload.get("created_at") or _now_iso()),
@@ -197,6 +204,25 @@ def corner_relief_state(
             if isinstance(item, dict) and item.get("poz_no")
         ],
         expected_fields=["corner", "relief_type", "size_mm"],
+        last_manager_prompt=prompt,
+    )
+
+
+def manager_action_state(
+    *,
+    session_id: str,
+    job_id: str,
+    action_type: str,
+    action_payload: dict[str, Any],
+    prompt: str,
+) -> GuidedFlowState:
+    return GuidedFlowState(
+        flow_type=FLOW_MANAGER_ACTION_CONFIRMATION,
+        session_id=session_id,
+        job_id=job_id,
+        expected_fields=["confirmation"],
+        action_type=action_type,
+        action_payload=dict(action_payload),
         last_manager_prompt=prompt,
     )
 

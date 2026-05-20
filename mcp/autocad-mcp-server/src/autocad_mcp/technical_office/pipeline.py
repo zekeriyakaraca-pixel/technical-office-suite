@@ -260,24 +260,33 @@ def _manual_reviews_for_open_manager_geometry_notes(
         if not isinstance(note, dict) or note.get("status") not in {None, "open"}:
             continue
         tags = {str(tag).lower() for tag in note.get("tags", []) if tag}
-        if not ({"pah/kose eksigi", "poligon kontur"} & tags):
+        if not ({"pah/kose eksigi", "poligon kontur", "delik koordinati"} & tags):
             continue
         affected = [str(poz) for poz in note.get("affected_pozs", []) if str(poz) in approved_by_poz]
         for poz_no in affected:
             approved = approved_by_poz[poz_no]
-            if approved.spec.corner_reliefs:
+            if ({"pah/kose eksigi", "poligon kontur"} & tags) and "delik koordinati" not in tags and approved.spec.corner_reliefs:
                 continue
+            if "delik koordinati" in tags and approved.spec.holes:
+                detail = (
+                    "Mudur notunda bu poz icin delik koordinati hatasi acik. "
+                    "Not resolved edilmeden QC ok=true teslim kapisini acamaz."
+                )
+                next_action = "Onayli spec holes koordinatini duzelt, poz yeniden uret ve mudur notunu resolved yap."
+            else:
+                detail = (
+                    "Mudur notunda bu poz icin poligon kontur veya pah/kose eksigi acik. "
+                    "Aday geometri duzeltilmeden QC ok=true teslim kapisini acamaz."
+                )
+                next_action = "Gorsel analiz adayini kontur/pah bilgisiyle duzelt ve poz yeniden uret."
             reviews.append(
                 {
                     "reason": "manager_geometry_issue_open",
                     "page": approved.spec.source_page,
                     "poz_no": poz_no,
                     "source_pdf": approved.source_pdf,
-                    "detail": (
-                        "Mudur notunda bu poz icin poligon kontur veya pah/kose eksigi acik. "
-                        "Aday geometri duzeltilmeden QC ok=true teslim kapisini acamaz."
-                    ),
-                    "next_action": "Gorsel analiz adayini kontur/pah bilgisiyle duzelt ve poz yeniden uret.",
+                    "detail": detail,
+                    "next_action": next_action,
                     "approval_required": True,
                 }
             )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import sqlite3
 import time
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from .text_normalization import normalize_search_text, repair_text
+
+_log = logging.getLogger(__name__)
 
 
 _JOB_ID_RE = re.compile(r"\b[A-Za-z]+-[0-9][A-Za-z0-9_.-]*\b")
@@ -519,7 +522,8 @@ def _row_to_fact(row: sqlite3.Row) -> dict[str, Any]:
     evidence = {}
     try:
         evidence = json.loads(row["evidence"])
-    except Exception:
+    except Exception as exc:
+        _log.warning("manager_memory_evidence_parse_failed", error=str(exc))
         evidence = {}
     return {
         "job_id": row["job_id"],
@@ -559,7 +563,8 @@ def _visible_text(text: str) -> str:
 def _loads_list(value: str) -> list[str]:
     try:
         parsed = json.loads(value)
-    except Exception:
+    except Exception as exc:
+        _log.warning("manager_memory_list_parse_failed", error=str(exc))
         return []
     if not isinstance(parsed, list):
         return []

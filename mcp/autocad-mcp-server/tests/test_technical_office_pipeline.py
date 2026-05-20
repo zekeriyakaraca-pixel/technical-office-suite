@@ -7,6 +7,7 @@ import pytest
 from openpyxl import load_workbook
 
 from autocad_mcp.technical_office.dxf_writer import write_plate_dxf
+from autocad_mcp.technical_office.approved_specs import load_approved_plate_specs
 from autocad_mcp.technical_office.job_metadata import JobMetadataError, upsert_job_metadata
 from autocad_mcp.technical_office.models import CornerReliefSpec, HoleSpec, PlateSpec
 from autocad_mcp.technical_office.nc1_writer import write_plate_nc1
@@ -17,6 +18,7 @@ from autocad_mcp.technical_office.plate_extractor import build_plate_specs
 from autocad_mcp.technical_office.pipeline import run_job
 from autocad_mcp.technical_office.positions import PositionValidationError, load_positions_csv
 from autocad_mcp.technical_office.qc import build_qc_report
+from autocad_mcp.technical_office.relief_types import normalize_relief_type
 
 
 def _workspace_root() -> Path:
@@ -58,6 +60,46 @@ def test_active_technical_office_agents_reference_learning_and_partlist_skills()
         text = (workspace / "agents" / agent / "AGENT.md").read_text(encoding="utf-8")
         for skill_name in skill_names:
             assert skill_name in text
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("pah", "chamfer"),
+        ("bevel", "chamfer"),
+        ("chamfered", "chamfer"),
+        ("round_relief", "round"),
+        ("radius", "round"),
+        ("polygon_contour", "polygon_contour"),
+    ],
+)
+def test_relief_type_aliases_are_normalized_once(raw, expected):
+    assert normalize_relief_type(raw) == expected
+
+
+def test_polygon_contour_sentinel_is_not_loaded_as_corner_relief(tmp_path):
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    (job_dir / "approved_plate_specs.json").write_text(
+        json.dumps(
+            {
+                "plates": [
+                    {
+                        "poz_no": "P100",
+                        "width": 200,
+                        "height": 100,
+                        "thickness": 10,
+                        "corner_reliefs": [{"type": "polygon_contour"}],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    approved = load_approved_plate_specs(job_dir)
+
+    assert approved[0].spec.corner_reliefs == []
 
 
 def test_positions_csv_validation_catches_missing_poz_no(tmp_path):
@@ -1120,6 +1162,63 @@ def test_run_job_accepts_single_pdf_alias_when_geometry_note_is_resolved(tmp_pat
     assert qc["ok"] is True
     assert qc["manual_review_required"] is False
     assert qc["source_pdf"] == "input.pdf"
+
+
+def test_run_job_preserves_approved_polygon_vertices_for_qc(tmp_path):
+    job_dir = tmp_path / "job-approved-polygon"
+    output_dir = tmp_path / "out"
+    job_dir.mkdir()
+    _write_vector_only_pdf(job_dir / "input.pdf")
+    (job_dir / "approved_plate_specs.json").write_text(
+        json.dumps(
+            {
+                "approved_by": "teknik-ofis-muduru",
+                "plates": [
+                    {
+                        "poz_no": "4042",
+                        "width": 156.5,
+                        "height": 175,
+                        "thickness": 10,
+                        "material": "S355JR",
+                        "quantity": 2,
+                        "source_pdf": "input.pdf",
+                        "source_page": 1,
+                        "corner_reliefs": [
+                            {
+                                "corner": "bottom_left",
+                                "relief_type": "chamfer",
+                                "radius": 10,
+                                "x_offset": 10,
+                                "y_offset": 10,
+                            }
+                        ],
+                        "polygon_vertices": [
+                            {"x": 0, "y": 10},
+                            {"x": 10, "y": 0},
+                            {"x": 156.5, "y": 0},
+                            {"x": 156.5, "y": 145},
+                            {"x": 120, "y": 175},
+                            {"x": 0, "y": 175},
+                        ],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_job(job_dir, output_dir, autocad_live_policy="off")
+
+    assert result.ok is True
+    qc = json.loads((output_dir / "4042" / "4042_qc.json").read_text(encoding="utf-8"))
+    assert qc["ok"] is True
+    assert qc["dxf"]["polygon_corner_relief_count"] == 2
+    assert qc["dxf"]["expected_corner_reliefs"] == 1
+    assert qc["dxf"]["has_polygon_vertices"] is True
+    assert qc["dxf"]["expected_polygon_vertex_count"] == 6
+    assert qc["dxf"]["outer_contour_vertex_count"] == 6
+    assert qc["plate_spec"]["polygon_vertices"][0] == {"x": 0.0, "y": 10.0}
 
 
 def _sample_plate() -> PlateSpec:

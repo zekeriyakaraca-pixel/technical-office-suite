@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from autocad_mcp.technical_office.models import CornerReliefSpec, HoleSpec, PlateSpec, SlotSpec
+from autocad_mcp.technical_office.relief_types import normalize_relief_type
 
 
 APPROVED_SPECS_FILENAME = "approved_plate_specs.json"
@@ -54,6 +55,7 @@ def _approved_plate_from_mapping(row: Any, row_number: int) -> ApprovedPlate:
         holes=_holes(row.get("holes", []), row_number),
         slots=_slots(row.get("slots", []), row_number),
         corner_reliefs=_corner_reliefs(row.get("corner_reliefs", []), row_number),
+        polygon_vertices=_polygon_vertices(row.get("polygon_vertices"), row_number),
         source_page=_optional_int(row.get("source_page"), "source_page", row_number),
         confidence=_optional_float(row.get("confidence"), "confidence", row_number) or 1.0,
         notes=_notes(row.get("notes")),
@@ -117,13 +119,13 @@ def _corner_reliefs(value: Any, row_number: int) -> list[CornerReliefSpec]:
             raise ApprovedSpecValidationError(f"row {row_number} corner relief {index}: must be an object")
         # polygon_contour sentinel: polygon çizim işareti, gerçek relief değil — atla
         rtype = _optional_str(item.get("relief_type") or item.get("type")) or ""
-        if _normalize_relief_type(rtype) == "polygon_contour":
+        if normalize_relief_type(rtype) == "polygon_contour":
             continue
         reliefs.append(
             CornerReliefSpec(
                 corner=_required_str(item, "corner", row_number),
                 radius=_required_float(item, "radius", row_number),
-                relief_type=_normalize_relief_type(rtype or "round"),
+                relief_type=normalize_relief_type(rtype or "round"),
                 x_offset=_optional_float(item.get("x_offset"), "x_offset", row_number),
                 y_offset=_optional_float(item.get("y_offset"), "y_offset", row_number),
             )
@@ -131,13 +133,24 @@ def _corner_reliefs(value: Any, row_number: int) -> list[CornerReliefSpec]:
     return reliefs
 
 
-def _normalize_relief_type(value: str) -> str:
-    normalized = value.strip().lower()
-    if normalized in {"pah", "bevel", "beveled", "chamfered"}:
-        return "chamfer"
-    if normalized in {"round_relief", "rounded", "radius"}:
-        return "round"
-    return normalized or "round"
+def _polygon_vertices(value: Any, row_number: int) -> list[dict[str, float]] | None:
+    if value in (None, ""):
+        return None
+    if not isinstance(value, list):
+        raise ApprovedSpecValidationError(f"row {row_number}: polygon_vertices must be a list")
+    if len(value) < 3:
+        raise ApprovedSpecValidationError(f"row {row_number}: polygon_vertices must have at least 3 points")
+    vertices: list[dict[str, float]] = []
+    for index, item in enumerate(value, start=1):
+        if not isinstance(item, dict):
+            raise ApprovedSpecValidationError(f"row {row_number} polygon vertex {index}: must be an object")
+        vertices.append(
+            {
+                "x": _required_float(item, "x", row_number),
+                "y": _required_float(item, "y", row_number),
+            }
+        )
+    return _normalize_polygon_orientation(vertices)
 
 
 def _notes(value: Any) -> list[str]:
@@ -187,3 +200,13 @@ def _optional_float(value: Any, field: str, row_number: int) -> float | None:
         return float(text.replace(",", "."))
     except ValueError as exc:
         raise ApprovedSpecValidationError(f"row {row_number}: {field} must be numeric") from exc
+
+
+def _normalize_polygon_orientation(vertices: list[dict[str, float]]) -> list[dict[str, float]]:
+    area = 0.0
+    for index, vertex in enumerate(vertices):
+        next_vertex = vertices[(index + 1) % len(vertices)]
+        area += vertex["x"] * next_vertex["y"] - next_vertex["x"] * vertex["y"]
+    if area < 0:
+        return list(reversed(vertices))
+    return vertices

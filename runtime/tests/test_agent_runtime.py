@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from technical_office_runtime.app import _candidate_schema_path, _render_candidate_pages, _validate_approved_rows
+from technical_office_runtime.app import app, _candidate_schema_path, _extract_codex_candidates, _render_candidate_pages, _validate_approved_rows
 from technical_office_runtime.agent_context import build_system_prompt, load_agent_context
 from technical_office_runtime.cli import build_doctor_report
 from technical_office_runtime.codex_bridge import (
@@ -23,7 +23,7 @@ from technical_office_runtime.codex_bridge import (
     inspect_codex_mcp,
 )
 from technical_office_runtime.config import RuntimePaths, get_paths, resolve_suite_root
-from technical_office_runtime.guided_flows import FLOW_CORNER_RELIEF, get_guided_flow_store
+from technical_office_runtime.guided_flows import FLOW_MANAGER_ACTION_CONFIRMATION, get_guided_flow_store
 from technical_office_runtime.manager_memory import get_manager_memory
 from technical_office_runtime.orchestrator import (
     MANAGER_CODEX_READ_TIMEOUT_SECONDS,
@@ -31,8 +31,7 @@ from technical_office_runtime.orchestrator import (
     AgentOrchestrator,
     _parse_corner_reliefs_by_pending_candidate,
 )
-from technical_office_runtime.session_store import cleanup_dashboard_guided_flow_session, load_session, save_session
-from technical_office_runtime.text_normalization import normalize_search_text, repair_text
+from technical_office_runtime.session_store import load_session, save_session
 from technical_office_runtime.tools import ToolRegistry
 
 
@@ -43,7 +42,7 @@ class FakeBridge:
         self.error = error
         self.calls: list[CodexRunRequest] = []
 
-    def run(self, request: CodexRunRequest, *, job_id: str | None = None):
+    def run(self, request: CodexRunRequest, *, job_id: str | None = None, on_event=None):
         self.calls.append(request)
         return SimpleNamespace(ok=self.ok, content=self.content, error=self.error, events=[], record=None)
 
@@ -69,6 +68,40 @@ def test_quality_control_context_directs_manual_review_to_manager():
     assert "Kullanicidan OCR/vision provider acmasini" in prompt
     assert "teknik-ofis-muduru" in prompt
     assert "QC ok=true olmadan partlist/teslim acilmaz" in prompt
+
+
+def test_visual_analysis_training_docs_are_wired():
+    root = Path(__file__).resolve().parents[2]
+    required_files = [
+        root / "agents" / "_shared" / "skills" / "GORSEL_ANALIZ_PROTOKOLU.md",
+        root / "agents" / "_shared" / "skills" / "MIKRO_ZOOM_PROTOKOLU.md",
+        root / "agents" / "_shared" / "skills" / "PDF_POZ_OKUMA.md",
+        root / "agents" / "_shared" / "skills" / "PLAKA_GEOMETRI_CIKARMA.md",
+        root / "agents" / "teknik-ofis-muduru" / "AGENT.md",
+        root / "agents" / "autocad-uzman-1" / "AGENT.md",
+        root / "agents" / "autocad-uzman-2" / "AGENT.md",
+        root / "agents" / "kalite-kontrol" / "AGENT.md",
+    ]
+
+    for path in required_files:
+        assert path.exists()
+    wired_files = [
+        root / "agents" / "_shared" / "skills" / "PDF_POZ_OKUMA.md",
+        root / "agents" / "_shared" / "skills" / "PLAKA_GEOMETRI_CIKARMA.md",
+        root / "agents" / "teknik-ofis-muduru" / "AGENT.md",
+        root / "agents" / "autocad-uzman-1" / "AGENT.md",
+        root / "agents" / "autocad-uzman-2" / "AGENT.md",
+        root / "agents" / "kalite-kontrol" / "AGENT.md",
+    ]
+    for path in wired_files:
+        assert "GORSEL_ANALIZ_PROTOKOLU" in path.read_text(encoding="utf-8")
+    protocol = (root / "agents" / "_shared" / "skills" / "GORSEL_ANALIZ_PROTOKOLU.md").read_text(encoding="utf-8")
+    microzoom = (root / "agents" / "_shared" / "skills" / "MIKRO_ZOOM_PROTOKOLU.md").read_text(encoding="utf-8")
+    assert "source_trace" in protocol
+    assert "analysis_confidence" in protocol
+    assert "microzoom_manifest_path" in protocol
+    assert "_microzoom_manifest.json" in microzoom
+    assert "stale" in microzoom
 
 
 def test_tool_registry_returns_safe_errors_for_unknown_or_invalid_tools():
@@ -396,6 +429,165 @@ def test_manager_selected_job_status_question_is_local(tmp_path):
     assert "FSM: uploaded" in result.content
 
 
+def test_failed_job_status_creates_manager_action_confirmation_flow(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "failed-001"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "approved_plate_specs.json").write_text(
+        json.dumps(
+            {
+                "plates": [
+                    {
+                        "poz_no": "4039",
+                        "width": 200,
+                        "height": 100,
+                        "thickness": 10,
+                        "corner_reliefs": [
+                            {"corner": "bottom_left_inner", "radius": 10, "relief_type": "round_relief"}
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "fsm_state.json").write_text(json.dumps({"state": "failed"}), encoding="utf-8")
+    (output_dir / "events.jsonl").write_text(
+        json.dumps({"type": "failed", "payload": {"error": "ApprovedSpecValidationError"}}),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id}, ensure_ascii=False)
+    bridge = FakeBridge("unused")
+
+    result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        f"bu isin durumunu ozetle\n\n[Secili is baglami: {selected_context}]",
+        session_id="agent:teknik-ofis-muduru:test",
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_manager_action_confirmation"
+    assert bridge.calls == []
+    assert "Neden:" in result.content
+    assert "Onerilen duzeltme:" in result.content
+    assert "Onay verirsen uygulayacagim:" in result.content
+    flow = get_guided_flow_store(paths.workspace_root).get_open(
+        session_id="agent:teknik-ofis-muduru:test",
+        job_id=job_id,
+        flow_type=FLOW_MANAGER_ACTION_CONFIRMATION,
+    )
+    assert flow is not None
+    assert flow.action_type == "approved_spec_repair_rerun"
+
+
+def test_manager_action_confirmation_applies_open_flow(tmp_path, monkeypatch):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "failed-apply-001"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "approved_plate_specs.json").write_text(
+        json.dumps(
+            {
+                "plates": [
+                    {
+                        "poz_no": "4039",
+                        "width": 200,
+                        "height": 100,
+                        "thickness": 10,
+                        "corner_reliefs": [
+                            {"corner": "bottom_left_inner", "radius": 10, "relief_type": "round"}
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "fsm_state.json").write_text(json.dumps({"state": "failed"}), encoding="utf-8")
+    selected_context = json.dumps({"selected_job_id": job_id}, ensure_ascii=False)
+    session_id = "agent:teknik-ofis-muduru:test-apply"
+    orch = AgentOrchestrator(paths, bridge=FakeBridge("unused"), allow_codex=True)
+    orch.run(f"son durum\n\n[Secili is baglami: {selected_context}]", session_id=session_id)
+    calls: list[tuple[str, str | None]] = []
+
+    def fake_apply(paths_arg, tools_arg, job_id_arg, *, session_id=None):
+        calls.append((job_id_arg, session_id))
+        return {
+            "ok": True,
+            "job_id": job_id_arg,
+            "fsm_state": "completed",
+            "summary": {"ok": True, "produced": [{"poz_no": "4039"}], "manual_reviews": []},
+            "partlist": {"path": "D-28_partlist.xlsx"},
+        }
+
+    monkeypatch.setattr("technical_office_runtime.orchestrator._apply_approved_spec_repair_and_rerun", fake_apply)
+
+    result = orch.run(f"yap\n\n[Secili is baglami: {selected_context}]", session_id=session_id)
+
+    assert calls == [(job_id, session_id)]
+    assert result.fallback_reason == "local_manager_action_apply"
+    assert "aksiyonunu uyguladim" in result.content
+    assert "Uretilen poz: 1" in result.content
+    flow = get_guided_flow_store(paths.workspace_root).get_open(
+        session_id=session_id,
+        job_id=job_id,
+        flow_type=FLOW_MANAGER_ACTION_CONFIRMATION,
+    )
+    assert flow is None
+
+
+def test_bare_yap_without_open_manager_action_does_not_route_to_codex(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    bridge = FakeBridge("unused")
+
+    result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run("yap", session_id="agent:teknik-ofis-muduru:test-empty")
+
+    assert result.fallback_reason == "local_manager_action_missing"
+    assert bridge.calls == []
+    assert "bekleyen mudur aksiyonu" in result.content
+
+
+def test_manager_action_cancel_clears_flow_without_applying(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "failed-cancel-001"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    spec = {
+        "plates": [
+            {
+                "poz_no": "4039",
+                "width": 200,
+                "height": 100,
+                "thickness": 10,
+                "corner_reliefs": [{"corner": "bottom_left_inner", "radius": 10, "relief_type": "round"}],
+            }
+        ]
+    }
+    (job_dir / "approved_plate_specs.json").write_text(json.dumps(spec), encoding="utf-8")
+    (output_dir / "fsm_state.json").write_text(json.dumps({"state": "failed"}), encoding="utf-8")
+    selected_context = json.dumps({"selected_job_id": job_id}, ensure_ascii=False)
+    session_id = "agent:teknik-ofis-muduru:test-cancel"
+    orch = AgentOrchestrator(paths, bridge=FakeBridge("unused"), allow_codex=True)
+    orch.run(f"son durum\n\n[Secili is baglami: {selected_context}]", session_id=session_id)
+
+    result = orch.run(f"iptal et\n\n[Secili is baglami: {selected_context}]", session_id=session_id)
+
+    assert result.fallback_reason == "local_manager_action_cancelled"
+    assert json.loads((job_dir / "approved_plate_specs.json").read_text(encoding="utf-8")) == spec
+    flow = get_guided_flow_store(paths.workspace_root).get_open(
+        session_id=session_id,
+        job_id=job_id,
+        flow_type=FLOW_MANAGER_ACTION_CONFIRMATION,
+    )
+    assert flow is None
+
+
 def test_manager_manual_review_question_lists_reviews_without_codex(tmp_path):
     paths = _make_minimal_paths(tmp_path)
     job_id = "danieli-1701"
@@ -500,6 +692,45 @@ def test_manager_issue_discussion_does_not_trigger_run_from_selected_job_context
     assert "26 sayfa" in result.content
     assert "3 poz" in result.content
     assert "tamamlanmis kabul edilmemeli" in result.content
+
+
+def test_manager_rejects_completed_status_when_user_reports_open_errors(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "456"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "4042.pdf").write_bytes(_minimal_pdf_bytes(page_count=1))
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (output_dir / "job_summary.json").write_text(
+        json.dumps({"ok": True, "produced": [{"poz_no": "4042"}], "manual_reviews": []}),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "completed"}, ensure_ascii=False)
+    bridge = FakeBridge("unused")
+
+    result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        "hayir henuz tamamlanmadi 456 numrali isle ilgili tespit ettigim hatalar var"
+        f"\n\n[Secili is baglami: {selected_context}]"
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_manager_issue_discussion"
+    assert bridge.calls == []
+    assert "sadece ozetle gecmem yanlis" in result.content
+    notes_path = output_dir / "manager_issue_notes.jsonl"
+    assert notes_path.exists()
+    note = json.loads(notes_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert note["status"] == "open"
+    assert "hata bildirimi" in note["tags"]
+
+    status = AgentOrchestrator(paths, bridge=FakeBridge("unused"), allow_codex=True).run(
+        f"456 son durum\n\n[Secili is baglami: {selected_context}]"
+    )
+    assert status.fallback_reason == "local_job_status"
+    assert "Acik mudur notu: 1" in status.content
+    assert "tamamlanmis kabul edilmemeli" in status.content
 
 
 def test_manager_geometry_issue_is_captured_for_visual_analysis(tmp_path):
@@ -652,6 +883,75 @@ def test_manager_action_request_corrects_latest_poz_corner_and_reruns(tmp_path):
     assert fsm["state"] == "completed"
     note = json.loads((output_dir / "manager_issue_notes.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert note["status"] == "resolved"
+
+
+def test_manager_hole_coordinate_correction_is_local_and_reruns(tmp_path):
+    base = _make_minimal_paths(tmp_path)
+    paths = RuntimePaths(
+        suite_root=base.suite_root,
+        registry_path=base.registry_path,
+        workspace_root=base.workspace_root,
+        jobs_import_root=base.jobs_import_root,
+        jobs_output_root=base.jobs_output_root,
+        autocad_src=resolve_suite_root() / "mcp" / "autocad-mcp-server" / "src",
+    )
+    job_id = "456"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes(page_count=1))
+    (job_dir / "job.json").write_text(json.dumps({"job_id": job_id, "project_name": job_id}), encoding="utf-8")
+    (job_dir / "approved_plate_specs.json").write_text(
+        json.dumps(
+            {
+                "approved_by": "teknik-ofis-muduru",
+                "plates": [
+                    {
+                        "poz_no": "4042",
+                        "width": 156.5,
+                        "height": 175,
+                        "thickness": 10,
+                        "material": "S355JR",
+                        "quantity": 2,
+                        "holes": [
+                            {"x": 85, "y": 75, "diameter": 17},
+                            {"x": 114.5, "y": 109, "diameter": 17},
+                        ],
+                        "slots": [],
+                        "corner_reliefs": [],
+                        "source_page": 1,
+                        "source_pdf": "input.pdf",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    selected_context = json.dumps({"selected_job_id": job_id, "status": "completed"}, ensure_ascii=False)
+    bridge = FakeBridge("unused", ok=False, error="Codex CLI timed out after 180 seconds.")
+
+    result = AgentOrchestrator(paths, bridge=bridge, allow_codex=True).run(
+        "4042 numarali pozun olusturulan dxf dosyasini inceledigimde delik konumlarinin hatali "
+        "olarak cizildigini gordum koordinat vermek gerekirse sol alt nokta 0,0 kabul edildiginde "
+        "cizilen konum alt delik icin X=85 Y=75 olmasi gereken degerler X=85 Y=98,5"
+        f"\n\n[Secili is baglami: {selected_context}]",
+        session_id="agent:teknik-ofis-muduru:test-hole-correction",
+    )
+
+    assert result.used_llm is False
+    assert result.fallback_reason == "local_hole_coordinate_correction"
+    assert bridge.calls == []
+    assert "delik koordinati duzeltmesini uyguladim" in result.content
+    approved = json.loads((job_dir / "approved_plate_specs.json").read_text(encoding="utf-8"))
+    holes = approved["plates"][0]["holes"]
+    assert holes[0]["x"] == 85.0
+    assert holes[0]["y"] == 98.5
+    qc = json.loads((output_dir / "4042" / "4042_qc.json").read_text(encoding="utf-8"))
+    assert qc["plate_spec"]["holes"][0]["y"] == 98.5
+    notes = [json.loads(line) for line in (output_dir / "manager_issue_notes.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert notes[-1]["status"] == "resolved"
+    assert "delik koordinati" in notes[-1]["tags"]
 
 
 def test_manager_supplied_position_info_writes_positions_and_reruns(tmp_path):
@@ -895,6 +1195,23 @@ def test_manager_issue_discussion_includes_job_learning_summary(tmp_path):
     assert "`danieli-1701` agent ogrenim ozeti" in result.content
     assert "Retrospektif: workspace/outputs/jobs/danieli-1701/retrospective.json" in result.content
     assert "partlist: Eksik metrikleri geometri ile hesapla." in result.content
+
+
+def test_backfill_result_response_does_not_crash_without_written_artifacts():
+    from technical_office_runtime.orchestrator import _format_backfill_result_response
+
+    content = _format_backfill_result_response(
+        "456",
+        {
+            "status": "awaiting_approval",
+            "retrospective": {},
+            "memory_bridge": {"ok": False},
+            "vault_path": None,
+        },
+    )
+
+    assert "Backfill tamamlandi" in content
+    assert "awaiting_approval" in content
 
 
 def test_manager_apply_decision_marks_selected_job_awaiting_approval_without_codex(tmp_path):
@@ -1429,11 +1746,18 @@ def test_render_candidate_pages_uses_pymupdf(tmp_path):
     job_dir.mkdir(parents=True)
     (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes())
 
-    images = _render_candidate_pages(paths, job_id, ["input.pdf"])
+    images, _evidence_meta = _render_candidate_pages(paths, job_id, ["input.pdf"])
 
     assert images
     assert images[0].suffix == ".png"
     assert images[0].exists()
+    manifest_path = images[0].parent.parent / "_microzoom_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["microzoom_valid"] is True
+    assert manifest["render_scale"] == 4.0
+    assert manifest["full_page_images"]
+    assert manifest["evidence_images"]
+    assert all(Path(item["path"]).exists() for item in manifest["evidence_images"])
 
 
 def test_render_candidate_pages_renders_all_pages_for_visual_cli(tmp_path):
@@ -1443,7 +1767,7 @@ def test_render_candidate_pages_renders_all_pages_for_visual_cli(tmp_path):
     job_dir.mkdir(parents=True)
     (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes(page_count=4))
 
-    images = _render_candidate_pages(paths, job_id, ["input.pdf"])
+    images, _evidence_meta = _render_candidate_pages(paths, job_id, ["input.pdf"])
 
     assert len(images) == 4
     assert [path.name for path in images] == ["input-p1.png", "input-p2.png", "input-p3.png", "input-p4.png"]
@@ -1469,12 +1793,166 @@ def test_candidate_schema_is_strict_and_avoids_stale_file(tmp_path):
     schema = json.loads(resolved.read_text(encoding="utf-8"))
     candidate = schema["properties"]["candidates"]["items"]
 
-    assert resolved.name == "plate-candidates.v2.schema.json"
+    assert resolved.name == "plate-candidates.v4.schema.json"
     assert candidate["additionalProperties"] is False
     assert set(candidate["properties"]) == set(candidate["required"])
     assert candidate["properties"]["holes"]["items"]["additionalProperties"] is False
     assert candidate["properties"]["slots"]["items"]["additionalProperties"] is False
     assert candidate["properties"]["corner_reliefs"]["items"]["additionalProperties"] is False
+    assert "x_offset" in candidate["properties"]["corner_reliefs"]["items"]["required"]
+    assert "y_offset" in candidate["properties"]["corner_reliefs"]["items"]["required"]
+    assert candidate["properties"]["polygon_vertices"]["items"]["additionalProperties"] is False
+    assert candidate["properties"]["source_trace"]["additionalProperties"] is False
+    for field in ("source_trace", "analysis_confidence", "uncertainties", "microzoom_manifest_path", "evidence_images"):
+        assert field in candidate["required"]
+
+
+def test_approval_validation_blocks_visual_candidate_without_microzoom_manifest(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "approval-missing-manifest"
+    job_dir = paths.jobs_import_root / job_id
+    job_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes())
+    rows = [
+        {
+            "candidate_id": "visual-1",
+            "provider": "codex_cli",
+            "approval_required": True,
+            "source_pdf": "input.pdf",
+            "source_page": 1,
+            "poz_no": "P100",
+            "width": 200,
+            "height": 100,
+            "thickness": 10,
+            "material": "S355",
+            "quantity": 1,
+            "holes": [],
+            "slots": [],
+            "corner_reliefs": [],
+            "confidence": 0.8,
+            "analysis_confidence": 0.8,
+            "uncertainties": [],
+            "source_trace": {
+                "source_pdf": "input.pdf",
+                "source_page": 1,
+                "method": "codex_cli",
+                "microzoom_manifest_path": str(tmp_path / "missing_manifest.json"),
+                "evidence_images": [str(tmp_path / "missing.png")],
+            },
+            "microzoom_manifest_path": str(tmp_path / "missing_manifest.json"),
+            "evidence_images": [str(tmp_path / "missing.png")],
+            "evidence": "page 1",
+        }
+    ]
+
+    validated, errors = _validate_approved_rows(rows, paths, job_id)
+
+    assert validated == []
+    assert errors
+    assert "microzoom manifest" in errors[0]["error"]
+
+
+def test_approval_validation_blocks_stale_visual_evidence_image(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "approval-stale-evidence"
+    job_dir = paths.jobs_import_root / job_id
+    job_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes())
+    images, _evidence_meta = _render_candidate_pages(paths, job_id, ["input.pdf"])
+    manifest_path = images[0].parent.parent / "_microzoom_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    evidence_image = next(item["path"] for item in manifest["evidence_images"] if item["source_page"] == 1)
+    Path(evidence_image).unlink()
+    rows = [
+        {
+            "candidate_id": "visual-1",
+            "provider": "codex_cli",
+            "approval_required": True,
+            "source_pdf": "input.pdf",
+            "source_page": 1,
+            "poz_no": "P100",
+            "width": 200,
+            "height": 100,
+            "thickness": 10,
+            "material": "S355",
+            "quantity": 1,
+            "holes": [],
+            "slots": [],
+            "corner_reliefs": [],
+            "confidence": 0.8,
+            "analysis_confidence": 0.8,
+            "uncertainties": [],
+            "source_trace": {
+                "source_pdf": "input.pdf",
+                "source_page": 1,
+                "method": "codex_cli",
+                "microzoom_manifest_path": str(manifest_path),
+                "evidence_images": [evidence_image],
+            },
+            "microzoom_manifest_path": str(manifest_path),
+            "evidence_images": [evidence_image],
+            "evidence": "page 1",
+        }
+    ]
+
+    validated, errors = _validate_approved_rows(rows, paths, job_id)
+
+    assert validated == []
+    assert errors
+    assert "stale or missing" in errors[0]["error"]
+
+
+def test_approval_validation_preserves_valid_visual_evidence(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "approval-valid-evidence"
+    job_dir = paths.jobs_import_root / job_id
+    job_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes())
+    images, _evidence_meta = _render_candidate_pages(paths, job_id, ["input.pdf"])
+    manifest_path = images[0].parent.parent / "_microzoom_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    evidence_images = [
+        item["path"]
+        for item in manifest["evidence_images"]
+        if item["source_pdf"] == "input.pdf" and item["source_page"] == 1
+    ]
+    rows = [
+        {
+            "candidate_id": "visual-1",
+            "provider": "codex_cli",
+            "approval_required": True,
+            "source_pdf": "input.pdf",
+            "source_page": 1,
+            "poz_no": "P100",
+            "width": 200,
+            "height": 100,
+            "thickness": 10,
+            "material": "S355",
+            "quantity": 1,
+            "holes": [],
+            "slots": [],
+            "corner_reliefs": [],
+            "confidence": 0.8,
+            "analysis_confidence": 0.8,
+            "uncertainties": [],
+            "source_trace": {
+                "source_pdf": "input.pdf",
+                "source_page": 1,
+                "method": "codex_cli",
+                "microzoom_manifest_path": str(manifest_path),
+                "evidence_images": evidence_images,
+            },
+            "microzoom_manifest_path": str(manifest_path),
+            "evidence_images": evidence_images,
+            "evidence": "page 1",
+        }
+    ]
+
+    validated, errors = _validate_approved_rows(rows, paths, job_id)
+
+    assert errors == []
+    assert validated[0]["source_trace"]["method"] == "codex_cli"
+    assert validated[0]["microzoom_manifest_path"] == str(manifest_path)
 
 
 def test_approval_validation_blocks_chamfer_evidence_without_contour_details(tmp_path):
@@ -1497,6 +1975,12 @@ def test_approval_validation_blocks_chamfer_evidence_without_contour_details(tmp
             "holes": [],
             "slots": [],
             "corner_reliefs": [],
+            "polygon_vertices": [
+                {"x": 0, "y": 0},
+                {"x": 240, "y": 0},
+                {"x": 240, "y": 150},
+                {"x": 0, "y": 150},
+            ],
             "contour_type": "polygon",
             "confidence": 0.78,
             "evidence": "drawing shows 240 bottom width and 150 height with 30 mm side offsets",
@@ -1508,6 +1992,251 @@ def test_approval_validation_blocks_chamfer_evidence_without_contour_details(tmp
     assert validated == []
     assert errors
     assert "corner_reliefs is empty" in errors[0]["error"]
+
+
+def test_approval_validation_blocks_polygon_without_vertices_even_with_reliefs(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "approval-polygon-missing-vertices"
+    job_dir = paths.jobs_import_root / job_id
+    job_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes())
+    rows = [
+        {
+            "candidate_id": "codex_cli-1",
+            "source_pdf": "input.pdf",
+            "source_page": 1,
+            "poz_no": "4042",
+            "width": 156.5,
+            "height": 175,
+            "thickness": 10,
+            "material": "S355JR",
+            "quantity": 2,
+            "holes": [],
+            "slots": [],
+            "corner_reliefs": [{"corner": "bottom_left", "radius": 10, "relief_type": "chamfer"}],
+            "polygon_vertices": None,
+            "contour_type": "polygon",
+            "confidence": 0.42,
+            "evidence": "top/right polygon contour is visible",
+        }
+    ]
+
+    validated, errors = _validate_approved_rows(rows, paths, job_id)
+
+    assert validated == []
+    assert errors
+    assert "polygon_vertices" in errors[0]["error"]
+
+
+def test_approval_validation_preserves_polygon_vertices_and_relief_offsets(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "approval-polygon-valid"
+    job_dir = paths.jobs_import_root / job_id
+    job_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes())
+    rows = [
+        {
+            "candidate_id": "codex_cli-1",
+            "source_pdf": "input.pdf",
+            "source_page": 1,
+            "poz_no": "4042",
+            "width": 156.5,
+            "height": 175,
+            "thickness": 10,
+            "material": "S355JR",
+            "quantity": 2,
+            "holes": [],
+            "slots": [],
+            "corner_reliefs": [
+                {"corner": "bottom_left", "radius": 10, "relief_type": "chamfer", "x_offset": 10, "y_offset": 10}
+            ],
+            "polygon_vertices": [
+                {"x": 0, "y": 10},
+                {"x": 10, "y": 0},
+                {"x": 146.5, "y": 0},
+                {"x": 156.5, "y": 10.5},
+                {"x": 156.5, "y": 145},
+                {"x": 120, "y": 175},
+                {"x": 0, "y": 175},
+            ],
+            "contour_type": "polygon",
+            "confidence": 0.74,
+            "evidence": "polygon contour fully dimensioned",
+        }
+    ]
+
+    validated, errors = _validate_approved_rows(rows, paths, job_id)
+
+    assert errors == []
+    assert validated[0]["polygon_vertices"][0] == {"x": 0.0, "y": 10.0}
+    assert validated[0]["corner_reliefs"][0]["x_offset"] == 10.0
+
+
+def test_approval_validation_blocks_invalid_polygon_geometry(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "approval-polygon-invalid"
+    job_dir = paths.jobs_import_root / job_id
+    job_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes())
+    base = {
+        "candidate_id": "codex_cli-1",
+        "source_pdf": "input.pdf",
+        "source_page": 1,
+        "poz_no": "4042",
+        "width": 100,
+        "height": 100,
+        "thickness": 10,
+        "material": "S355JR",
+        "quantity": 1,
+        "holes": [],
+        "slots": [],
+        "corner_reliefs": [],
+        "contour_type": "polygon",
+        "confidence": 0.8,
+        "evidence": "polygon contour fully dimensioned",
+    }
+
+    cases = [
+        ([{"x": 0, "y": 0}, {"x": 110, "y": 0}, {"x": 100, "y": 100}, {"x": 0, "y": 100}], "outside plate bounds"),
+        ([{"x": 0, "y": 0}, {"x": 0, "y": 0}, {"x": 100, "y": 100}, {"x": 0, "y": 100}], "duplicates an adjacent point"),
+        ([{"x": 0, "y": 0}, {"x": 100, "y": 100}, {"x": 100, "y": 0}, {"x": 0, "y": 100}], "self-intersect"),
+    ]
+    for vertices, expected in cases:
+        row = dict(base, polygon_vertices=vertices)
+        validated, errors = _validate_approved_rows([row], paths, job_id)
+        assert validated == []
+        assert expected in errors[0]["error"]
+
+
+def test_extract_codex_candidates_preserves_partial_timeout_candidates(tmp_path, monkeypatch):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "extract-partial-timeout"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes())
+    (output_dir / "pdf_diagnostics.json").write_text(
+        json.dumps({"pdfs": [{"source_pdf": "input.pdf", "classification": "visual_text_required"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        app.state,
+        "codex_bridge",
+        FakeBridge(
+        json.dumps(
+            {
+                "candidates": [
+                    {
+                        "source_pdf": "input.pdf",
+                        "source_page": 1,
+                        "poz_no": "P100",
+                        "width": 200,
+                        "height": 100,
+                        "thickness": 10,
+                        "material": "S355",
+                        "quantity": 1,
+                        "holes": [],
+                        "slots": [],
+                        "corner_reliefs": [],
+                        "polygon_vertices": None,
+                        "contour_type": "rectangle",
+                        "confidence": 0.7,
+                        "analysis_confidence": 0.7,
+                        "uncertainties": [],
+                        "source_trace": {
+                            "source_pdf": "input.pdf",
+                            "source_page": 1,
+                            "method": "codex_cli",
+                            "microzoom_manifest_path": None,
+                            "evidence_images": [],
+                        },
+                        "microzoom_manifest_path": None,
+                        "evidence_images": [],
+                        "evidence": "visible rectangle",
+                    }
+                ]
+            }
+        ),
+        ok=False,
+        error="Codex CLI timed out after 120 seconds.",
+        ),
+        raising=False,
+    )
+
+    result = _extract_codex_candidates(paths, job_id)
+
+    assert result["ok"] is True
+    assert result["extraction_status"] == "partial_timeout"
+    data = json.loads((output_dir / "codex_candidates.json").read_text(encoding="utf-8"))
+    assert data["extraction_status"] == "partial_timeout"
+    assert data["candidates"][0]["extraction_status"] == "partial_timeout"
+    assert data["candidates"][0]["quality_status"] in {"ready_for_approval", "needs_review"}
+
+
+def test_extract_codex_candidates_timeout_without_json_writes_manual_review(tmp_path, monkeypatch):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "extract-timeout-empty"
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    job_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes())
+    (output_dir / "pdf_diagnostics.json").write_text(
+        json.dumps({"pdfs": [{"source_pdf": "input.pdf", "classification": "visual_text_required"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        app.state,
+        "codex_bridge",
+        FakeBridge("", ok=False, error="Codex CLI timed out after 120 seconds."),
+        raising=False,
+    )
+
+    result = _extract_codex_candidates(paths, job_id)
+
+    assert result["ok"] is True
+    assert result["extraction_status"] == "visual_extraction_failed"
+    reviews = json.loads((output_dir / "manual_review_required.json").read_text(encoding="utf-8"))
+    assert reviews[0]["reason"] == "visual_extraction_failed"
+    data = json.loads((output_dir / "codex_candidates.json").read_text(encoding="utf-8"))
+    assert data["candidates"] == []
+
+
+def test_tool_approval_uses_shared_polygon_validation(tmp_path):
+    paths = _make_minimal_paths(tmp_path)
+    job_id = "tool-approval-polygon-missing"
+    job_dir = paths.jobs_import_root / job_id
+    job_dir.mkdir(parents=True)
+    (job_dir / "input.pdf").write_bytes(_minimal_pdf_bytes())
+    result = ToolRegistry(paths).approve_candidates(
+        {
+            "job_id": job_id,
+            "rows": [
+                {
+                    "candidate_id": "manager-1",
+                    "source_pdf": "input.pdf",
+                    "source_page": 1,
+                    "poz_no": "4042",
+                    "width": 156.5,
+                    "height": 175,
+                    "thickness": 10,
+                    "material": "S355JR",
+                    "quantity": 2,
+                    "holes": [],
+                    "slots": [],
+                    "corner_reliefs": [{"corner": "bottom_left", "radius": 10, "relief_type": "chamfer"}],
+                    "polygon_vertices": None,
+                    "contour_type": "polygon",
+                    "confidence": 0.42,
+                }
+            ],
+        }
+    )
+
+    assert result["ok"] is False
+    assert "polygon_vertices" in result["validation_errors"][0]["error"]
+    assert not (job_dir / "approved_plate_specs.json").exists()
 
 
 def test_corner_relief_approval_error_routes_to_manager_question(tmp_path):
@@ -2256,7 +2985,6 @@ def test_extract_target_agent_kalite():
 
 def test_load_expert_agent_memories_returns_content(tmp_path):
     from technical_office_runtime.agent_context import load_expert_agent_memories
-    from technical_office_runtime.config import RuntimePaths
 
     # tmp_path altında sahte agent yapısı kur
     agents_root = tmp_path / "agents"
@@ -2493,6 +3221,114 @@ def test_patch_removes_duplicate_corner(tmp_path):
     patched = json.loads((job_dir / "approved_plate_specs.json").read_text(encoding="utf-8"))
     reliefs = patched["plates"][0]["corner_reliefs"]
     assert len(reliefs) == 1
+
+
+def test_repair_normalizes_round_relief_alias(tmp_path):
+    import json
+    from technical_office_runtime.orchestrator import _repair_approved_spec_corner_reliefs
+
+    spec = {
+        "plates": [
+            {
+                "poz_no": "4038",
+                "width": 200,
+                "height": 100,
+                "thickness": 8,
+                "corner_reliefs": [{"corner": "bottom_left", "radius": 10, "relief_type": "round_relief"}],
+            }
+        ]
+    }
+    (tmp_path / "approved_plate_specs.json").write_text(json.dumps(spec), encoding="utf-8")
+
+    result = _repair_approved_spec_corner_reliefs(tmp_path, apply=True)
+
+    assert result["changed"] is True
+    patched = json.loads((tmp_path / "approved_plate_specs.json").read_text(encoding="utf-8"))
+    assert patched["plates"][0]["corner_reliefs"][0]["relief_type"] == "round"
+
+
+def test_repair_removes_large_offset_that_is_not_radius(tmp_path):
+    import json
+    from technical_office_runtime.orchestrator import _repair_approved_spec_corner_reliefs
+
+    spec = {
+        "plates": [
+            {
+                "poz_no": "R4-11-314",
+                "width": 340,
+                "height": 50,
+                "thickness": 5,
+                "evidence": "Top view shows 50 mm upstand/offset both ends and 240 mm middle.",
+                "corner_reliefs": [
+                    {"corner": "top_left", "radius": 50, "relief_type": "round"},
+                    {"corner": "top_right", "radius": 50, "relief_type": "round"},
+                ],
+            }
+        ]
+    }
+    (tmp_path / "approved_plate_specs.json").write_text(json.dumps(spec), encoding="utf-8")
+
+    result = _repair_approved_spec_corner_reliefs(tmp_path, apply=True)
+
+    assert result["changed"] is True
+    assert any(change["kind"] == "remove_non_relief_offset" for change in result["changes"])
+    patched = json.loads((tmp_path / "approved_plate_specs.json").read_text(encoding="utf-8"))
+    assert patched["plates"][0]["corner_reliefs"] == []
+    assert any("manager_repair_removed_non_relief_offset" in note for note in patched["plates"][0]["notes"])
+
+
+def test_repair_keeps_ambiguous_large_radius_for_user_decision(tmp_path):
+    import json
+    from technical_office_runtime.orchestrator import _repair_approved_spec_corner_reliefs
+
+    spec = {
+        "plates": [
+            {
+                "poz_no": "X-1",
+                "width": 80,
+                "height": 50,
+                "thickness": 5,
+                "evidence": "Front view shows a rounded end.",
+                "corner_reliefs": [{"corner": "top_left", "radius": 50, "relief_type": "round"}],
+            }
+        ]
+    }
+    (tmp_path / "approved_plate_specs.json").write_text(json.dumps(spec), encoding="utf-8")
+
+    result = _repair_approved_spec_corner_reliefs(tmp_path, apply=True)
+
+    assert result["changed"] is False
+    assert result["ambiguous"] is True
+    patched = json.loads((tmp_path / "approved_plate_specs.json").read_text(encoding="utf-8"))
+    assert patched == spec
+
+
+def test_repair_marks_equal_size_relief_as_chamfer(tmp_path):
+    import json
+    from technical_office_runtime.orchestrator import _repair_approved_spec_corner_reliefs
+
+    spec = {
+        "plates": [
+            {
+                "poz_no": "P-10",
+                "width": 100,
+                "height": 80,
+                "thickness": 8,
+                "evidence": "Corner relief is 10x10 at both bottom corners.",
+                "corner_reliefs": [{"corner": "bottom_left", "radius": 10, "relief_type": "round"}],
+            }
+        ]
+    }
+    (tmp_path / "approved_plate_specs.json").write_text(json.dumps(spec), encoding="utf-8")
+
+    result = _repair_approved_spec_corner_reliefs(tmp_path, apply=True)
+
+    assert result["changed"] is True
+    patched = json.loads((tmp_path / "approved_plate_specs.json").read_text(encoding="utf-8"))
+    relief = patched["plates"][0]["corner_reliefs"][0]
+    assert relief["relief_type"] == "chamfer"
+    assert relief["x_offset"] == 10
+    assert relief["y_offset"] == 10
 
 
 def test_deep_output_inspection_detector():

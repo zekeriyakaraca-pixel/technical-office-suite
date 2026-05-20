@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import structlog
+
 from .audit import get_audit_logger
 from .config import RuntimePaths, ensure_autocad_import_path
 from .job_fsm import JobState, get_fsm
@@ -14,6 +16,9 @@ from .manager_memory import get_manager_memory
 from .memory_bridge import compute_pdf_fingerprint, get_memory_bridge
 from .metrics import record_job_status
 from .session_store import load_session, save_session
+from .state_io import read_json
+
+log = structlog.get_logger(__name__)
 
 
 DEFAULT_MANAGER_SESSION_ID = "agent:teknik-ofis-muduru:dashboard"
@@ -498,8 +503,8 @@ def _save_manager_notification(paths: RuntimePaths, job_id: str, session_id: str
                 selected_job_id=job_id,
                 history=history,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("completion_memory_record_failed", job_id=job_id, error=str(exc))
 
 
 def _final_message(job_id: str, *, summary: dict[str, Any], partlist: dict[str, Any], output_dir: Path) -> str:
@@ -698,12 +703,7 @@ def _write_skill_proposal(paths: RuntimePaths, job_id: str, payload: dict[str, A
 
 
 def _read_json(path: Path) -> Any:
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+    return read_json(path)
 
 
 def _relative(path: Path | str | None, paths: RuntimePaths) -> str | None:
@@ -901,6 +901,70 @@ def _recent_closure_events(paths: RuntimePaths, job_id: str, *, limit: int = 4) 
         if isinstance(event, dict) and event.get("type") in selected:
             events.append({"job_id": job_id, **event})
     return events[-limit:]
+
+
+def write_manual_learning_note(
+    paths: RuntimePaths,
+    job_id: str,
+    user_text: str,
+    *,
+    session_id: str | None = None,
+) -> Path:
+    """Write a manual learning note for an in-progress job.
+
+    Called when the user reports errors or wants to record learnings from a job
+    that has not yet completed the normal finalizer path (e.g. awaiting_approval).
+    Writes to journal/skill_proposals/ and records in manager_memory.
+    """
+    from .chat_detectors import _visible_user_text  # local import to avoid circular
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    root = paths.suite_root / "journal" / "skill_proposals"
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / f"{ts}_{_safe_filename(job_id)}_manual_note.md"
+    visible = _visible_user_text(user_text).strip()
+    content = "\n".join([
+        f"# Manuel Ogrenim Notu — {job_id}",
+        "",
+        f"**Olusturulma:** {_now_iso()}",
+        "**Kaynak:** manager_chat_manual",
+        f"**Is:** {job_id}",
+        "",
+        "## Kullanici Tarafindan Bildirilen Hatalar",
+        "",
+        visible,
+        "",
+        "## Durum",
+        "",
+        "pending_manual_review",
+        "",
+        "> Bu not otomatik tamamlama dongusu disinda yazilmistir.",
+        "> Skill dosyalari degistirilmemistir. Onay icin proposal akisini kullanin.",
+        "",
+    ])
+    target.write_text(content, encoding="utf-8")
+    _record_learning_fact_to_manager_memory(paths, job_id, visible, session_id)
+    return target
+
+
+def _record_learning_fact_to_manager_memory(
+    paths: RuntimePaths,
+    job_id: str,
+    user_text: str,
+    session_id: str | None,
+) -> None:
+    try:
+        sid = session_id or DEFAULT_MANAGER_SESSION_ID
+        memory = get_manager_memory(paths.workspace_root)
+        memory.record_turn(
+            session_id=sid,
+            user_message=f"[learning_note] {job_id}: {user_text[:400]}",
+            assistant_message=f"Manuel ogrenim notu kaydedildi: {job_id}",
+            job_id=job_id,
+            history=[],
+        )
+    except Exception as exc:
+        log.warning("completion_learning_memory_failed", job_id=job_id, error=str(exc))
 
 
 def _shorten(value: str, limit: int) -> str:

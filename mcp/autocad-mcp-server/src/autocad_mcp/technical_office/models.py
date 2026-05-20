@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+_GEOMETRY_TOLERANCE = 1e-6
+
 
 @dataclass
 class PositionRecord:
@@ -68,6 +70,7 @@ class PlateSpec:
     holes: list[HoleSpec] = field(default_factory=list)
     slots: list[SlotSpec] = field(default_factory=list)
     corner_reliefs: list[CornerReliefSpec] = field(default_factory=list)
+    polygon_vertices: list[dict[str, float]] | None = None
     source_page: int | None = None
     confidence: float = 0.0
     notes: list[str] = field(default_factory=list)
@@ -113,6 +116,13 @@ class PlateSpec:
                 errors.append(f"corner relief {index} radius is too large for plate bounds")
             if relief.relief_type not in {"round", "cugul", "chamfer", "pah"}:
                 errors.append(f"corner relief {index} has unsupported type: {relief.relief_type}")
+        if self.polygon_vertices is not None:
+            if len(self.polygon_vertices) < 3:
+                errors.append("polygon_vertices must have at least 3 points")
+            for i, v in enumerate(self.polygon_vertices):
+                if "x" not in v or "y" not in v:
+                    errors.append(f"polygon_vertices[{i}] must have x and y")
+            errors.extend(_polygon_geometry_errors(self.polygon_vertices, self.width, self.height))
         return errors
 
     def to_dict(self) -> dict[str, Any]:
@@ -128,3 +138,110 @@ class ManualReview:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _polygon_geometry_errors(vertices: list[dict[str, float]], width: float, height: float) -> list[str]:
+    errors: list[str] = []
+    if len(vertices) < 3:
+        return errors
+
+    points: list[tuple[float, float]] = []
+    for index, vertex in enumerate(vertices):
+        try:
+            x = float(vertex["x"])
+            y = float(vertex["y"])
+        except (KeyError, TypeError, ValueError) as exc:
+            errors.append(f"polygon_vertices[{index}] must contain numeric x and y")
+            continue
+        points.append((x, y))
+        if x < -_GEOMETRY_TOLERANCE or x > width + _GEOMETRY_TOLERANCE:
+            errors.append(f"polygon_vertices[{index}].x is outside plate bounds")
+        if y < -_GEOMETRY_TOLERANCE or y > height + _GEOMETRY_TOLERANCE:
+            errors.append(f"polygon_vertices[{index}].y is outside plate bounds")
+
+    if len(points) < 3:
+        return errors
+
+    for index, point in enumerate(points):
+        previous = points[index - 1]
+        if _same_point(point, previous):
+            errors.append(f"polygon_vertices[{index}] duplicates an adjacent point")
+
+    if _polygon_self_intersects(points):
+        errors.append("polygon_vertices must not self-intersect")
+    area = _signed_area(points)
+    if abs(area) <= _GEOMETRY_TOLERANCE:
+        errors.append("polygon_vertices must describe a non-zero area contour")
+
+    bbox_tolerance = max(1.0, min(width, height) * 0.02)
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    if (
+        abs(min(xs)) > bbox_tolerance
+        or abs(min(ys)) > bbox_tolerance
+        or abs(max(xs) - width) > bbox_tolerance
+        or abs(max(ys) - height) > bbox_tolerance
+    ):
+        errors.append("polygon_vertices bounding box must match plate width/height within tolerance")
+    return errors
+
+
+def _signed_area(points: list[tuple[float, float]]) -> float:
+    area = 0.0
+    for index, (x1, y1) in enumerate(points):
+        x2, y2 = points[(index + 1) % len(points)]
+        area += x1 * y2 - x2 * y1
+    return area / 2.0
+
+
+def _polygon_self_intersects(points: list[tuple[float, float]]) -> bool:
+    count = len(points)
+    for i in range(count):
+        a1 = points[i]
+        a2 = points[(i + 1) % count]
+        for j in range(i + 1, count):
+            if abs(i - j) <= 1 or {i, j} == {0, count - 1}:
+                continue
+            b1 = points[j]
+            b2 = points[(j + 1) % count]
+            if _segments_intersect(a1, a2, b1, b2):
+                return True
+    return False
+
+
+def _segments_intersect(
+    a1: tuple[float, float],
+    a2: tuple[float, float],
+    b1: tuple[float, float],
+    b2: tuple[float, float],
+) -> bool:
+    o1 = _orientation(a1, a2, b1)
+    o2 = _orientation(a1, a2, b2)
+    o3 = _orientation(b1, b2, a1)
+    o4 = _orientation(b1, b2, a2)
+    if o1 * o2 < -_GEOMETRY_TOLERANCE and o3 * o4 < -_GEOMETRY_TOLERANCE:
+        return True
+    if abs(o1) <= _GEOMETRY_TOLERANCE and _on_segment(a1, b1, a2):
+        return True
+    if abs(o2) <= _GEOMETRY_TOLERANCE and _on_segment(a1, b2, a2):
+        return True
+    if abs(o3) <= _GEOMETRY_TOLERANCE and _on_segment(b1, a1, b2):
+        return True
+    if abs(o4) <= _GEOMETRY_TOLERANCE and _on_segment(b1, a2, b2):
+        return True
+    return False
+
+
+def _orientation(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> float:
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+
+def _on_segment(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> bool:
+    return (
+        min(a[0], c[0]) - _GEOMETRY_TOLERANCE <= b[0] <= max(a[0], c[0]) + _GEOMETRY_TOLERANCE
+        and min(a[1], c[1]) - _GEOMETRY_TOLERANCE <= b[1] <= max(a[1], c[1]) + _GEOMETRY_TOLERANCE
+    )
+
+
+def _same_point(a: tuple[float, float], b: tuple[float, float]) -> bool:
+    return abs(a[0] - b[0]) <= _GEOMETRY_TOLERANCE and abs(a[1] - b[1]) <= _GEOMETRY_TOLERANCE

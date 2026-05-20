@@ -19,6 +19,7 @@
 |-------|------|-------------|
 | Doküman Formatlama | `../_shared/skills/DOKUMAN_FORMATLAMA.md` | Format Uyumu |
 | ERT Partlist Excel Üretimi | `../_shared/skills/ERT_PARTLIST_EXCEL_URETIMI.md` | Format Uyumu |
+| Gorsel Analiz Protokolu | `../_shared/skills/GORSEL_ANALIZ_PROTOKOLU.md` | Format Uyumu |
 | Arşivleme | `../_shared/skills/ARSIVLEME.md` | Düzen |
 | Öğrenme ve Hafıza Yönetimi | `../_shared/skills/OGRENME_VE_HAFIZA_YONETIMI.md` | Düzen |
 
@@ -38,9 +39,11 @@
 
 ## What Success Looks Like
 - Eksiksiz ve hatasız teslim dosyası.
+- Gorsel aday kaynakli pozlarda mudur onayi, kanit sozlesmesi ve QC `ok=true` tamamlanmadan partlist/teslim uretilmez.
 
 ## What This Agent Should Never Do
 - Veri içeriğini değiştirmek (Sadece format düzenler).
+- `manual_review_required` veya gorsel kanit eksigi varken nihai teslim paketi hazirlamak.
 
 ## Duplication Notes
 - Kalite kontrol rolleri için kopyalanabilir.

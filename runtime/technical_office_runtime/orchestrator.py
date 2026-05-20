@@ -6,29 +6,117 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+import structlog
 
 from .agent_context import build_system_prompt, load_agent_context
 from .codex_bridge import CodexBridge, CodexRunRequest
+from .chat_detectors import (
+    _CORNER_RELIEFS_QUESTION_MARKER,
+    _MEMORY_CONTEXT_MARKER,
+    _SELECTED_CONTEXT_MARKER,
+    _apply_corner_reliefs_to_candidates,
+    _candidates_needing_corner_reliefs,
+    _candidates_needing_polygon_vertices,
+    _completion_step_number,
+    _completion_step_number_for_request,
+    _corner_mentions,
+    _corner_relief_suggestion_from_history,
+    _corner_relief_suggestion_from_prompt,
+    _corner_size_from_text,
+    _dedupe_corner_reliefs,
+    _extract_all_poz_nos_from_text,
+    _extract_job_id,
+    _extract_numeric_reference,
+    _extract_poz_no,
+    _extract_poz_no_from_text,
+    _extract_project_name,
+    _extract_target_agent_from_text,
+    _format_corner_relief_ambiguity_response,
+    _format_corner_relief_missing_detail_response,
+    _format_corner_reliefs_question,
+    _format_lightweight_manager_response,
+    _format_polygon_vertices_question,
+    _format_runtime_ready_response,
+    _hidden_context_payload,
+    _job_id_from_memory_context,
+    _job_id_from_recent_history,
+    _last_message_was_corner_reliefs_question,
+    _looks_like_agent_creation_request,
+    _looks_like_apply_manager_decision_request,
+    _looks_like_approval_queue_request,
+    _looks_like_learning_write_intent,
+    _looks_like_bare_manager_action_confirmation,
+    _looks_like_corner_relief_confirmation,
+    _looks_like_corner_relief_meta_question,
+    _looks_like_corner_reliefs_help_request,
+    _looks_like_confirmed_job_reset,
+    _looks_like_create_job_request,
+    _looks_like_deep_output_inspection_request,
+    _looks_like_guided_flow_cancel,
+    _looks_like_hole_coordinate_correction_request,
+    _looks_like_job_completion_continue_request,
+    _looks_like_job_completion_step_request,
+    _looks_like_job_learning_request,
+    _looks_like_job_reference,
+    _looks_like_job_restart_request,
+    _looks_like_job_status_request,
+    _looks_like_issue_discussion_request,
+    _looks_like_lightweight_manager_chat,
+    _looks_like_list_jobs_request,
+    _looks_like_manager_action_confirmation,
+    _looks_like_manual_review_detail_request,
+    _looks_like_mark_column_position_hint_request,
+    _looks_like_missing_candidate_extraction_request,
+    _looks_like_page_exclusion_request,
+    _looks_like_polygon_draw_instruction,
+    _looks_like_position_info_resolution_request,
+    _looks_like_poz_correction_action_request,
+    _looks_like_run_request,
+    _looks_like_runtime_ready_request,
+    _looks_like_selected_job_reference,
+    _looks_like_skill_promote_request,
+    _looks_like_skill_update_request,
+    _manager_flow_session_id,
+    _merge_flow_pending,
+    _normalize_turkish,
+    _parse_corner_relief_segment,
+    _parse_corner_reliefs_by_pending_candidate,
+    _parse_corner_reliefs_from_text,
+    _policy_from_text,
+    _pozs_for_relief_rows,
+    _relief_type_from_text,
+    _selected_job_id_from_context,
+    _short_text,
+    _should_route_locally,
+    _visible_user_text,
+    _write_codex_candidates,
+)
 from .config import RuntimePaths, get_paths
+from .approval_validation import annotate_candidate_qualities
 from .gemini_bridge import GeminiBridge, get_gemini_bridge
 from .guided_flows import (
     FLOW_CORNER_RELIEF,
+    FLOW_MANAGER_ACTION_CONFIRMATION,
     GuidedFlowState,
     corner_relief_state,
     get_guided_flow_store,
+    manager_action_state,
 )
 from .job_fsm import JobState, get_fsm
+from .state_io import atomic_write_json, read_json
 from .text_normalization import normalize_search_text, repair_text
 from .tools import ToolRegistry
-from .completion import append_job_event, complete_approved_job
+from .completion import append_job_event, backfill_job_learning, complete_approved_job, write_manual_learning_note
+from .visual_evidence import render_microzoom_images, write_microzoom_manifest
 
 
 MANAGER_CODEX_READ_TIMEOUT_SECONDS = 90
 MANAGER_CODEX_WRITE_TIMEOUT_SECONDS = 180
 MANAGER_VISUAL_CANDIDATE_MAX_PAGES = 80
-_SELECTED_CONTEXT_MARKER = "[Secili is baglami:"
-_MEMORY_CONTEXT_MARKER = "[Mudur hafiza baglami:"
+
+log = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -37,6 +125,35 @@ class AgentRunResult:
     tool_results: list[dict[str, Any]] = field(default_factory=list)
     used_llm: bool = False
     fallback_reason: str | None = None
+
+
+@dataclass
+class _DispatchEntry:
+    """Tek bir manager chat dispatch kuralı."""
+    detector: Callable[[str], bool]
+    method_name: str
+    needs_session: bool = False
+    text_only: bool = False  # handler yalnızca (text,) alır; history olmadan
+
+
+_MANAGER_DISPATCH: list[_DispatchEntry] = [
+    _DispatchEntry(_looks_like_job_restart_request,                "_handle_job_restart_request"),
+    _DispatchEntry(_looks_like_apply_manager_decision_request,     "_handle_apply_manager_decisions"),
+    _DispatchEntry(_looks_like_missing_candidate_extraction_request, "_handle_missing_candidate_extraction"),
+    _DispatchEntry(_looks_like_poz_correction_action_request,      "_handle_poz_correction_action",    needs_session=True),
+    _DispatchEntry(_looks_like_hole_coordinate_correction_request, "_handle_hole_coordinate_correction", needs_session=True),
+    _DispatchEntry(_looks_like_job_completion_step_request,        "_handle_job_completion_step"),
+    _DispatchEntry(_looks_like_job_completion_continue_request,    "_handle_job_completion_continue"),
+    _DispatchEntry(_looks_like_position_info_resolution_request,   "_handle_position_info_resolution", needs_session=True),
+    _DispatchEntry(_looks_like_page_exclusion_request,             "_handle_page_exclusion_request",   needs_session=True),
+    _DispatchEntry(_looks_like_mark_column_position_hint_request,  "_handle_mark_column_position_hint",needs_session=True),
+    _DispatchEntry(_looks_like_deep_output_inspection_request,     "_handle_deep_output_inspection"),
+    _DispatchEntry(_looks_like_manual_review_detail_request,       "_handle_manual_review_detail_request"),
+    _DispatchEntry(_looks_like_job_status_request,                 "_handle_job_status_request",       needs_session=True),
+    _DispatchEntry(_looks_like_approval_queue_request,             "_handle_approval_queue_request"),
+    _DispatchEntry(_looks_like_skill_promote_request,              "_handle_skill_promote_request",    text_only=True),
+    _DispatchEntry(_looks_like_skill_update_request,               "_handle_skill_update_request",     needs_session=True),
+]
 
 
 class AgentOrchestrator:
@@ -73,6 +190,23 @@ class AgentOrchestrator:
             )
             if triggered is not None:
                 return triggered
+            action_flow = self._open_manager_action_flow_state(
+                session_id=session_id,
+                selected_job_id=selected_job_id,
+            )
+            if action_flow is not None and _looks_like_guided_flow_cancel(text):
+                get_guided_flow_store(self.paths.workspace_root).cancel(action_flow)
+                return AgentRunResult(
+                    content="Bekleyen mudur aksiyonunu iptal ettim. Herhangi bir dosya veya pipeline degisikligi yapilmadi.",
+                    fallback_reason="local_manager_action_cancelled",
+                )
+            if action_flow is not None and _looks_like_manager_action_confirmation(text):
+                return self._apply_manager_action_flow(action_flow, session_id=session_id)
+            if action_flow is None and _looks_like_bare_manager_action_confirmation(text):
+                return AgentRunResult(
+                    content="Uygulanacak bekleyen mudur aksiyonu bulamadim. Once secili isin durumunu okuyup oneriyi netlestirmem gerekiyor.",
+                    fallback_reason="local_manager_action_missing",
+                )
             open_flow = self._open_corner_relief_flow_state(
                 session_id=session_id,
                 selected_job_id=selected_job_id,
@@ -97,34 +231,9 @@ class AgentOrchestrator:
                 content=_format_lightweight_manager_response(self._available_job_ids()),
                 fallback_reason="local_manager_chat",
             )
-        if _looks_like_job_restart_request(text):
-            return self._handle_job_restart_request(text, history)
-        if _looks_like_apply_manager_decision_request(text):
-            return self._handle_apply_manager_decisions(text, history)
-        if _looks_like_missing_candidate_extraction_request(text):
-            return self._handle_missing_candidate_extraction(text, history)
-        if _looks_like_poz_correction_action_request(text):
-            return self._handle_poz_correction_action(text, history, session_id=session_id)
-        if _looks_like_job_completion_step_request(text):
-            return self._handle_job_completion_step(text, history)
-        if _looks_like_job_completion_continue_request(text):
-            return self._handle_job_completion_continue(text, history)
-        if _looks_like_position_info_resolution_request(text):
-            return self._handle_position_info_resolution(text, history, session_id=session_id)
-        if _looks_like_page_exclusion_request(text):
-            return self._handle_page_exclusion_request(text, history, session_id=session_id)
-        if _looks_like_mark_column_position_hint_request(text):
-            return self._handle_mark_column_position_hint(text, history, session_id=session_id)
-        if _looks_like_deep_output_inspection_request(text):
-            return self._handle_deep_output_inspection(text, history)
-        if _looks_like_manual_review_detail_request(text):
-            return self._handle_manual_review_detail_request(text, history)
-        if _looks_like_job_status_request(text):
-            return self._handle_job_status_request(text, history)
-        if _looks_like_skill_promote_request(text):
-            return self._handle_skill_promote_request(text)
-        if _looks_like_skill_update_request(text):
-            return self._handle_skill_update_request(text, history, session_id=session_id)
+        dispatched = self._run_dispatch(text, history, session_id)
+        if dispatched is not None:
+            return dispatched
         if _looks_like_project_edit_request(text):
             if self.allow_codex:
                 return self._run_codex_manager(text, history or [])
@@ -140,7 +249,7 @@ class AgentOrchestrator:
             raw = _format_issue_discussion_response(self.paths, text)
             return self._synthesize_query_with_gemini(raw, text, history, fallback_reason="local_manager_issue_discussion")
         if _looks_like_job_learning_request(text):
-            return self._handle_job_learning_request(text, history)
+            return self._handle_job_learning_request(text, history, session_id=session_id)
         if _should_route_locally(text):
             routed = self._run_fallback(text, reason="local_tool_router")
             if routed.tool_results:
@@ -180,15 +289,15 @@ class AgentOrchestrator:
                     for p in _recent
                 )
                 base_system += f"\n\n## Son Başarılı Çizim Desenleri (Hafıza)\n{_lines}"
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("manager_recent_patterns_failed", error=str(exc))
         try:
             from .agent_context import load_expert_agent_memories
             _expert_mem = load_expert_agent_memories(self.paths)
             if _expert_mem:
                 base_system += f"\n\n## Uzman Hafızaları ve Kuralları\n{_expert_mem}"
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("manager_expert_memories_failed", error=str(exc))
         prompt = _manager_prompt(base_system, user_text, history, project_edit=project_edit)
         sandbox = "workspace-write" if project_edit else "read-only"
         timeout_seconds = MANAGER_CODEX_WRITE_TIMEOUT_SECONDS if project_edit else MANAGER_CODEX_READ_TIMEOUT_SECONDS
@@ -249,8 +358,8 @@ class AgentOrchestrator:
             expert_mem = load_expert_agent_memories(self.paths)
             if expert_mem:
                 system_prompt += f"\n\n## Uzman Hafızaları ve Kuralları\n{expert_mem}"
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("gemini_expert_memories_failed", error=str(exc))
 
         # Memory bridge — son 3 başarılı çizim deseni
         try:
@@ -263,8 +372,8 @@ class AgentOrchestrator:
                     for p in _recent
                 )
                 system_prompt += f"\n\n## Son Başarılı Çizim Desenleri\n{_lines}"
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("gemini_recent_patterns_failed", error=str(exc))
 
         visible_message = _visible_user_text(user_text)
 
@@ -305,7 +414,8 @@ class AgentOrchestrator:
         try:
             from .gemini_bridge import get_gemini_bridge as _get_gemini
             gemini = _get_gemini()
-        except Exception:
+        except Exception as exc:
+            log.warning("gemini_bridge_lookup_failed", error=str(exc))
             gemini = None
         if not gemini:
             return AgentRunResult(content=data_block, fallback_reason=fallback_reason)
@@ -322,9 +432,13 @@ class AgentOrchestrator:
         synthesis_message = (
             f"[Sistem okuması]\n{data_block}\n\n"
             f"[Kullanıcı sorusu]\n{_visible_user_text(user_text)}\n\n"
-            "Yukarıdaki sistem verisini kullanarak, teknik-ofis-müdürü olarak "
-            "doğal, karar odaklı ve Türkçe bir yanıt ver. "
-            "Sistem verisini olduğu gibi kopyalama; müdür gibi yorum yap ve sonraki adımı belirt."
+            "Teknik-ofis-müdürü olarak yukarıdaki sistem verisini yorumla ve kullanıcıya DOĞAL bir paragraf halinde yanıt ver.\n\n"
+            "ZORUNLU FORMAT KURALLARI:\n"
+            "- Madde listesi (-), numaralı liste, veya 'Anahtar: Değer' satırları KULLANMA.\n"
+            "- Sistem verisini olduğu gibi kopyalama veya tekrarlama.\n"
+            "- Akıcı Türkçe cümleler yaz; konuşur gibi, müdür gibi.\n"
+            "- 2-4 cümle yeterli. Fazladan bilgi ekleme.\n"
+            "- Sonraki adımı açık ve doğrudan belirt: 'Şunu yapıyorum' veya 'Şunu öneriyorum'.\n"
         )
 
         result = gemini.run(system_prompt, history, synthesis_message)
@@ -442,6 +556,27 @@ class AgentOrchestrator:
             fallback_reason=reason,
         )
 
+    def _run_dispatch(
+        self,
+        text: str,
+        history: list[dict[str, str]],
+        session_id: str | None,
+    ) -> AgentRunResult | None:
+        """_MANAGER_DISPATCH tablosunu sırayla çalıştırır.
+
+        İlk eşleşen entry'nin handler'ını çağırıp sonucunu döner.
+        Hiç eşleşme yoksa None döner; çağıran run() devam eder.
+        """
+        for entry in _MANAGER_DISPATCH:
+            if entry.detector(text):
+                handler = getattr(self, entry.method_name)
+                if entry.text_only:
+                    return handler(text)
+                if entry.needs_session:
+                    return handler(text, history, session_id=session_id)
+                return handler(text, history)
+        return None
+
     def _available_job_ids(self) -> list[str]:
         result = self.tools.run("list_jobs", {})
         jobs = result.get("jobs", []) if result.get("ok") else []
@@ -462,7 +597,7 @@ class AgentOrchestrator:
         job_id = _extract_job_id(visible_text) or selected_job_id or _job_id_from_memory_context(text) or _job_id_from_recent_history(history)
         if not job_id:
             return AgentRunResult(
-                content="Hangi isi bastan baslatacagimi belirt. Ornek: `danieli-1701 temiz baslat`.",
+                content="Hangi isi bastan baslatacagimi belirt. Ornek: `job-001 temiz baslat`.",
                 fallback_reason="local_job_restart_plan",
             )
         # Onaylanmis spec'te gecersiz corner_reliefs varsa → tam sifirlama yerine sadece o alanı düzelt ve yeniden çalıştır
@@ -504,17 +639,118 @@ class AgentOrchestrator:
             fallback_reason="local_job_restart_plan",
         )
 
-    def _handle_job_status_request(self, text: str, history: list[dict[str, str]]) -> AgentRunResult:
+    def _open_manager_action_flow_state(
+        self,
+        *,
+        session_id: str | None,
+        selected_job_id: str | None,
+    ) -> GuidedFlowState | None:
+        sid = _manager_flow_session_id(session_id)
+        store = get_guided_flow_store(self.paths.workspace_root)
+        if selected_job_id:
+            found = store.get_open(session_id=sid, job_id=selected_job_id, flow_type=FLOW_MANAGER_ACTION_CONFIRMATION)
+            if found is not None:
+                return found
+        return store.get_open(session_id=sid, flow_type=FLOW_MANAGER_ACTION_CONFIRMATION)
+
+    def _apply_manager_action_flow(
+        self,
+        flow_state: GuidedFlowState,
+        *,
+        session_id: str | None = None,
+    ) -> AgentRunResult:
+        store = get_guided_flow_store(self.paths.workspace_root)
+        if flow_state.action_type == "approved_spec_repair_rerun":
+            result = _apply_approved_spec_repair_and_rerun(
+                self.paths,
+                self.tools,
+                flow_state.job_id,
+                session_id=session_id or flow_state.session_id,
+            )
+            if result.get("ok") or result.get("error") in {"no_repair_needed", "repair_ambiguous"}:
+                store.resolve(flow_state)
+            content = _format_manager_action_apply_response(result)
+            return AgentRunResult(
+                content=content,
+                tool_results=[{"tool": "approved_spec_repair_rerun", "result": result}],
+                fallback_reason="local_manager_action_apply",
+            )
+        store.cancel(flow_state)
+        return AgentRunResult(
+            content=f"Bekleyen mudur aksiyonunu uygulayamadim: bilinmeyen aksiyon `{flow_state.action_type}`. Akisi kapattim.",
+            fallback_reason="local_manager_action_unknown",
+        )
+
+    def _handle_job_status_request(
+        self,
+        text: str,
+        history: list[dict[str, str]],
+        *,
+        session_id: str | None = None,
+    ) -> AgentRunResult:
         visible_text = _visible_user_text(text)
         selected_job_id = _selected_job_id_from_context(text)
         job_id = _extract_job_id(visible_text) or selected_job_id or _job_id_from_memory_context(text) or _job_id_from_recent_history(history)
         if not job_id:
             return AgentRunResult(
-                content="Hangi isin durumunu okuyacagimi belirt. Ornek: `danieli-1701 ne durumdayiz`.",
+                content="Hangi isin durumunu okuyacagimi belirt. Ornek: `job-001 ne durumdayiz`.",
                 fallback_reason="local_job_status",
+            )
+        proposal = _manager_failed_job_repair_proposal(self.paths, job_id)
+        if proposal.get("actionable"):
+            content = _format_manager_repair_confirmation_prompt(self.paths, job_id, proposal)
+            get_guided_flow_store(self.paths.workspace_root).upsert(
+                manager_action_state(
+                    session_id=_manager_flow_session_id(session_id),
+                    job_id=job_id,
+                    action_type="approved_spec_repair_rerun",
+                    action_payload={"expected_summary": proposal.get("summary", "")},
+                    prompt=content,
+                )
+            )
+            return AgentRunResult(
+                content=content,
+                tool_results=[{"tool": "propose_approved_spec_repair", "result": proposal}],
+                fallback_reason="local_manager_action_confirmation",
+            )
+        if proposal.get("ambiguous"):
+            return AgentRunResult(
+                content=_format_manager_repair_ambiguous_response(self.paths, job_id, proposal),
+                tool_results=[{"tool": "propose_approved_spec_repair", "result": proposal}],
+                fallback_reason="local_manager_action_ambiguous",
             )
         raw = _format_job_status_response(self.paths, job_id)
         return self._synthesize_query_with_gemini(raw, text, history, fallback_reason="local_job_status")
+
+    def _handle_approval_queue_request(self, text: str, history: list[dict[str, str]]) -> AgentRunResult:
+        result = self.tools.run("list_jobs", {})
+        jobs = result.get("jobs", []) if result.get("ok") else []
+        waiting: list[dict] = []
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+            job_id = str(job.get("job_id") or "")
+            fsm = str(job.get("fsm_state") or "")
+            if fsm != "awaiting_approval":
+                continue
+            output_dir = self.paths.jobs_output_root / job_id
+            codex_path = output_dir / "codex_candidates.json"
+            data = read_json(codex_path, default={})
+            candidate_count = len(data.get("candidates") or [])
+            waiting.append({
+                "job_id": job_id,
+                "project": str(job.get("project_name") or job_id),
+                "candidates": candidate_count,
+            })
+        if not waiting:
+            raw = "Su anda onay bekleyen is yok. Tum isler tamamlanmis veya aktif durumda."
+        else:
+            lines = [f"Onay bekleyen isler ({len(waiting)} adet):"]
+            for w in waiting:
+                lines.append(f"- `{w['job_id']}` — {w['project']} ({w['candidates']} aday)")
+            lines.append("\nHer is icin `<job_id> adaylari onayla` veya dashboard Adaylar panelini kullan.")
+            raw = "\n".join(lines)
+        return self._synthesize_query_with_gemini(raw, text, history, fallback_reason="local_approval_queue")
 
     def _handle_apply_manager_decisions(self, text: str, history: list[dict[str, str]]) -> AgentRunResult:
         visible_text = _visible_user_text(text)
@@ -639,6 +875,77 @@ class AgentOrchestrator:
             ),
             tool_results=[{"tool": "skill_promote", "target": str(memory_path), "proposal": proposal_id}],
             fallback_reason="local_skill_promote",
+        )
+
+    def _handle_hole_coordinate_correction(
+        self,
+        text: str,
+        history: list[dict[str, str]],
+        *,
+        session_id: str | None = None,
+    ) -> AgentRunResult:
+        visible_text = _visible_user_text(text)
+        selected_job_id = _selected_job_id_from_context(text)
+        job_id = selected_job_id or _job_id_from_memory_context(text) or _extract_job_id(visible_text)
+        poz_no: str | None = None
+        if job_id:
+            known_pozs = _known_job_pozs(self.paths, job_id)
+            poz_candidates = _extract_poz_numbers(visible_text, allowed_pozs=known_pozs)
+            poz_no = poz_candidates[-1] if poz_candidates else None
+        else:
+            poz_candidates = _extract_poz_numbers(visible_text)
+            poz_no = poz_candidates[-1] if poz_candidates else _extract_poz_no_from_text(visible_text)
+            if poz_no:
+                job_id = self._find_job_for_poz(poz_no)
+        if not job_id:
+            return AgentRunResult(
+                content="Delik koordinati duzeltmesi icin ilgili isi bulamadim. Bir job sec veya job ID yaz.",
+                fallback_reason="local_hole_coordinate_correction",
+            )
+        if not poz_no:
+            known_pozs = _known_job_pozs(self.paths, job_id)
+            poz_candidates = _extract_poz_numbers(visible_text, allowed_pozs=known_pozs)
+            poz_no = poz_candidates[-1] if poz_candidates else _latest_referenced_poz_from_notes(self.paths, job_id, allowed_pozs=known_pozs)
+        if not poz_no:
+            return AgentRunResult(
+                content=f"`{job_id}` icin hangi pozun delik koordinatini duzeltecegimi bulamadim. Ornek: `Poz 4042 alt delik X=85 Y=98.5 olmali`.",
+                fallback_reason="local_hole_coordinate_correction",
+            )
+        row = _approved_row_for_poz(self.paths, job_id, poz_no)
+        if row is None:
+            return AgentRunResult(
+                content=f"`{job_id}` Poz {poz_no} icin onayli spec satiri bulunamadi. Once aday onayi veya spec kaydi gerekiyor.",
+                fallback_reason="local_hole_coordinate_correction",
+            )
+        correction = _parse_hole_coordinate_correction(visible_text, row)
+        if correction is None:
+            return AgentRunResult(
+                content=(
+                    f"`{job_id}` Poz {poz_no} icin delik koordinati talebini aldim; fakat hedef X/Y degerini net okuyamadim. "
+                    "Net format: `alt delik X=85 Y=75 yerine X=85 Y=98.5 olmali`."
+                ),
+                fallback_reason="local_hole_coordinate_correction",
+            )
+        note_path = _append_manager_issue_note(
+            self.paths,
+            job_id,
+            visible_text,
+            tags=_issue_tags(visible_text),
+            affected_pozs=[poz_no],
+        )
+        result = _apply_hole_coordinate_correction(
+            self.paths,
+            self.tools,
+            job_id,
+            poz_no,
+            correction,
+            session_id=session_id,
+        )
+        result["note_path"] = note_path
+        return AgentRunResult(
+            content=_format_hole_coordinate_correction_response(result),
+            tool_results=[{"tool": "apply_hole_coordinate_correction", "result": result}],
+            fallback_reason="local_hole_coordinate_correction",
         )
 
     def _handle_poz_correction_action(
@@ -812,7 +1119,13 @@ class AgentOrchestrator:
         raw = _format_deep_output_inspection(self.paths, job_id)
         return self._synthesize_query_with_gemini(raw, text, history, fallback_reason="local_deep_output_inspection")
 
-    def _handle_job_learning_request(self, text: str, history: list[dict[str, str]]) -> AgentRunResult:
+    def _handle_job_learning_request(
+        self,
+        text: str,
+        history: list[dict[str, str]],
+        *,
+        session_id: str | None = None,
+    ) -> AgentRunResult:
         visible_text = _visible_user_text(text)
         selected_job_id = _selected_job_id_from_context(text)
         job_id = _extract_job_id(visible_text) or selected_job_id or _job_id_from_memory_context(text) or _job_id_from_recent_history(history)
@@ -821,6 +1134,28 @@ class AgentOrchestrator:
                 content="Hangi isin ogrenimlerini ozetleyecegimi bulamadim. Bir job ID sec veya yaz.",
                 fallback_reason="local_job_learning",
             )
+        write_intent = _looks_like_learning_write_intent(text)
+        retro_path = self.paths.jobs_output_root / job_id / "retrospective.json"
+        retro_missing = not retro_path.exists()
+        if write_intent or retro_missing:
+            result = backfill_job_learning(
+                self.paths,
+                job_id,
+                dry_run=False,
+                session_id=session_id or DEFAULT_MANAGER_SESSION_ID,
+            )
+            if result.get("eligible") is False:
+                note_path = write_manual_learning_note(
+                    self.paths, job_id, text, session_id=session_id
+                )
+                raw = _format_manual_note_written_response(job_id, note_path, self.paths)
+            else:
+                raw = _format_backfill_result_response(job_id, result)
+            result_obj = self._synthesize_query_with_gemini(
+                raw, text, history, fallback_reason="local_job_learning_write"
+            )
+            result_obj.tool_results = [{"tool": "backfill_job_learning", "result": result}]
+            return result_obj
         raw = _format_job_learning_summary(self.paths, job_id)
         return self._synthesize_query_with_gemini(raw, text, history, fallback_reason="local_job_learning")
 
@@ -845,9 +1180,17 @@ class AgentOrchestrator:
         codex_data = _read_json_file(output_dir / "codex_candidates.json") or {}
         all_candidates: list[Any] = codex_data.get("candidates", []) if isinstance(codex_data, dict) else []
         pending = _candidates_needing_corner_reliefs(all_candidates)
+        polygon_pending = _candidates_needing_polygon_vertices(all_candidates)
+        validation_errors = trigger.get("validation_errors") if isinstance(trigger.get("validation_errors"), list) else []
+        polygon_blocked = any("polygon_vertices" in str(item.get("error") if isinstance(item, dict) else item) for item in validation_errors)
+        if polygon_pending and (polygon_blocked or not pending):
+            return AgentRunResult(
+                content=_format_polygon_vertices_question(job_id, polygon_pending),
+                fallback_reason="local_polygon_vertices_trigger",
+            )
         if not pending:
             return AgentRunResult(
-                content=f"`{job_id}` isinde kose bosaltma gerektiren eksik aday bulunamadi.",
+                content=f"`{job_id}` isinde kontur/kose bosaltma gerektiren eksik aday bulunamadi.",
                 fallback_reason="local_corner_reliefs_trigger",
             )
         prompt = _format_corner_reliefs_question(job_id, pending)
@@ -981,10 +1324,13 @@ class AgentOrchestrator:
                         target_pending = pending
                 else:
                     target_pending = pending
-                polygon_reliefs: dict[int, list[dict]] = {
-                    item["_row_index"]: [{"type": "polygon_contour"}]
-                    for item in target_pending
-                }
+                polygon_reliefs: dict[int, list[dict]] = {}
+                for _poly_item in target_pending:
+                    _existing_reliefs = [
+                        r for r in _poly_item.get("corner_reliefs", [])
+                        if isinstance(r, dict) and r.get("corner")
+                    ]
+                    polygon_reliefs[_poly_item["_row_index"]] = _existing_reliefs + [{"type": "polygon_contour"}]
                 polygon_pozs = [str(p.get("poz_no", p["_row_index"])) for p in target_pending]
                 apply_result = self._apply_corner_relief_updates(
                     job_id=job_id,
@@ -1133,12 +1479,13 @@ def _gemini_manager_system_prompt(system_prompt: str) -> str:
         "- Taslaklar agents/_drafts/ altinda olusturulur. Aktif etmek icin CLI'da toffice agent approve <draft_id> gerekir.\n"
         "- Aktif etme yetkisi yalnizca proje yoneticisindedir.\n\n"
         f"{_PROACTIVE_AUTHORITY_BLOCK}"
-        "\n\n## Yanıt Kalitesi\n"
-        "- Bilgi şablonunu olduğu gibi tekrarlama; müdür gibi değerlendir ve yorum yap.\n"
-        "- Kullanıcının sorusuna odaklan, fazladan bilgi verme.\n"
-        "- Karar cümlesi açık ve eyleme geçilebilir olsun: 'Şunu yapmalısın:' değil, 'Şunu yapıyorum:'\n"
-        "- Hata varsa: nedeni, hangi adım ve sonraki aksiyon — bu üçünü ver.\n"
-        "- Onaylı spec, QC, partlist durumunu özetleyerek 'iş nerede?' sorusunu yanıtla.\n"
+        "\n\n## Yanıt Formatı (KESİNLİKLE UYULMASI ZORUNLU)\n"
+        "- Madde listesi (-), numaralı liste (1. 2. 3.), veya 'Anahtar: Değer' formatını KULLANMA.\n"
+        "- Sistem verisini, JSON'u veya ham teknik şablonu olduğu gibi kopyalayıp yapıştırma.\n"
+        "- Akıcı Türkçe paragraf yaz: bir müdür iş arkadaşına konuşur gibi, doğal ve kısa.\n"
+        "- Yanıt genellikle 2-4 cümle olsun. Sonraki adımı 'Yapıyorum:', 'Öneriyorum:' ile belirt.\n"
+        "- Hata varsa: ne oldu, neden, şimdi ne yapılacak — üç şeyi tek akıcı cümlede ver.\n"
+        "- 'iş nerede?' sorularında FSM durumunu ve bir sonraki aksiyon adımını konuşur gibi özetle.\n"
     )
 
 
@@ -1179,1069 +1526,6 @@ def _manager_prompt(system_prompt: str, user_text: str, history: list[dict[str, 
     )
 
 
-def _extract_job_id(text: str) -> str | None:
-    match = re.search(r"\b[A-Za-z]+-[0-9][A-Za-z0-9_.-]*\b", text)
-    return match.group(0) if match else None
-
-
-def _should_route_locally(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if _looks_like_list_jobs_request(lower):
-        return True
-    if _looks_like_create_job_request(lower) and _extract_job_id(visible_text):
-        return True
-    selected_job_id = _selected_job_id_from_context(text)
-    has_explicit_or_selected_job = bool(_extract_job_id(visible_text) or (selected_job_id and _looks_like_selected_job_reference(lower)))
-    if has_explicit_or_selected_job and (_looks_like_run_request(lower) or "qc" in lower):
-        return True
-    if has_explicit_or_selected_job and "partlist" in lower:
-        return True
-    if _extract_numeric_reference(visible_text) and _looks_like_job_reference(lower) and _looks_like_run_request(lower):
-        return True
-    if "qc" in lower and _extract_poz_no(visible_text):
-        return True
-    if _looks_like_agent_creation_request(lower):
-        return True
-    return False
-
-
-def _looks_like_lightweight_manager_chat(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text).strip(" .!?")
-    if not lower:
-        return False
-    direct_phrases = {
-        "merhaba",
-        "selam",
-        "selamlar",
-        "hey",
-        "alo",
-        "burada misin",
-        "orada misin",
-        "hey orada misin",
-        "hey oradamisin",
-        "mudurum merhaba",
-        "mudur merhaba",
-        "nasilsin",
-        "nasil misin",
-        "iyi misin",
-        "ne var ne yok",
-        "naber",
-        "ne haber",
-        "gunaydin",
-        "iyi gunler",
-        "iyi aksamlar",
-        "iyi geceler",
-        "gorusuruz",
-        "hosca kal",
-        "sagol",
-        "tesekkurler",
-        "tamam anladim",
-    }
-    if lower in direct_phrases:
-        return True
-    return any(
-        phrase in lower
-        for phrase in (
-            "ne yapabiliriz",
-            "neler yapabiliriz",
-            "ne yapabilirsin",
-            "neler yapabilirsin",
-            "ne is yapabiliriz",
-            "ne isler yapabiliriz",
-            "seninle ne is yapabilir",
-            "seninle ne yapabilir",
-            "nasil sohbet",
-            "sohbet edebilir",
-            "dogal sohbet",
-            "orada misin",
-            "burada misin",
-        )
-    )
-
-
-def _format_lightweight_manager_response(job_ids: list[str]) -> str:
-    if job_ids:
-        jobs = ", ".join(f"`{job_id}`" for job_id in job_ids[:6])
-        job_hint = f" Su an gordugum isler: {jobs}."
-    else:
-        job_hint = " Su an kayitli is gormuyorum; PDF yukleyerek yeni is acabiliriz."
-    return (
-        "Merhaba, buradayim. Teknik ofis muduru olarak PDF yukleme, pipeline calistirma, aday onayi, "
-        "QC kontrolu, partlist kapisi, is hata notlari, yeni ajan taslaklari ve acik proje/kod duzeltme "
-        "isteklerini yonetebilirim. Kod/dosya degisikligi acikca istendiginde Codex CLI'yi proje yazma modunda calistiririm."
-        f"{job_hint} Dogrudan bir is icin `test-001 isini calistir`, karar icin de "
-        "`bu isin durumunu ozetle` gibi yazabilirsin."
-    )
-
-
-def _looks_like_runtime_ready_request(text: str) -> bool:
-    lower = _normalize_turkish(text)
-    asks_ready = any(phrase in lower for phrase in ("hazir", "ayakta", "calisiyor", "durum", "status", "ready"))
-    return asks_ready and any(word in lower for word in ("sistem", "runtime", "agent", "ajan", "ofis"))
-
-
-def _format_runtime_ready_response() -> str:
-    return (
-        "Merhaba, Technical Office Runtime hazir. 2D dashboard, Codex CLI bridge ve deterministic DXF/NC1/QC pipeline ayni runtime'a bagli.\n"
-        "Mudur normal sohbette read-only, acik proje/kod duzeltme isteginde workspace-write Codex CLI modunu kullanir.\n"
-        "Dogrudan is calistirmak icin `run job test-001 autocad off` yazabilirsin; Codex durumunu kontrol etmek icin `toffice doctor` kullanilir."
-    )
-
-
-def _looks_like_job_restart_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not lower:
-        return False
-    restart_phrases = (
-        "bastan baslamak",
-        "bastan baslayalim",
-        "bastan basla",
-        "bastan baslat",
-        "bastan baslayacagiz",
-        "temiz baslat",
-        "temiz basla",
-        "sifirdan basla",
-        "sifirdan baslat",
-        "sifirdan baslayacagiz",
-        "sifirla",
-        "resetle",
-        "reset at",
-        "yeniden baslamak",
-        "yeniden baslayalim",
-        "yeniden basla",
-        "yeniden baslat",
-        "yeniden baslayacagiz",
-    )
-    if not any(phrase in lower for phrase in restart_phrases):
-        return False
-    return bool(_extract_job_id(visible_text) or _selected_job_id_from_context(text) or _looks_like_selected_job_reference(lower))
-
-
-def _looks_like_job_status_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    has_job = bool(_extract_job_id(visible_text) or _selected_job_id_from_context(text))
-    has_selected_job_phrase = any(phrase in lower for phrase in ("bu isin", "bu isi", "secili is", "secilen is"))
-    if not has_job and not has_selected_job_phrase:
-        return False
-    phrases = (
-        "ne durumdayiz",
-        "ne durumdayız",
-        "ne durum",
-        "son durum",
-        "durum nedir",
-        "durumu nedir",
-        "durumunu",
-        "durumdayiz",
-        "neredeyiz",
-        "hangi asamada",
-        "ne asamada",
-        "ozetle",
-        "ozet",
-        # hata sorguları — soru kipinde veya pipeline bağlamında
-        "hata nedir",
-        "hata ne",
-        "ne hatasi",
-        "hatayi goster",
-        "hata goster",
-        "neden basarisiz",
-        "neden calismadi",
-        "neden hata",
-        "basarisiz neden",
-        "neden fail",
-        "pipeline hata",
-        "pipeline basarisiz",
-        "hata var mi",
-        "hata aldi",
-        "ne hata verdi",
-        "hata verdi mi",
-    )
-    return any(phrase in lower for phrase in phrases)
-
-
-def _looks_like_manual_review_detail_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not lower:
-        return False
-    has_job = bool(
-        _extract_job_id(visible_text)
-        or _selected_job_id_from_context(text)
-        or _job_id_from_memory_context(text)
-        or any(phrase in lower for phrase in ("bu isin", "bu isi", "secili is", "secilen is"))
-    )
-    if not has_job:
-        return False
-    review_terms = (
-        "manuel inceleme",
-        "manual review",
-        "mudur not",
-        "mudur notu",
-        "mudur notlari",
-        "acik not",
-        "blokaj",
-        "hangi poz",
-    )
-    action_terms = (
-        "nereden",
-        "gorebilirim",
-        "goster",
-        "listele",
-        "hangileri",
-        "hangi",
-        "nedir",
-        "nelerdir",
-        "neler",
-        "gerektiren",
-        "gereken",
-        "nasil tamam",
-        "nasil kapat",
-        "nasil cozer",
-        "tamamlayacagim",
-        "tamamlayalim",
-        "kapatacagim",
-    )
-    return any(term in lower for term in review_terms) and any(term in lower for term in action_terms)
-
-
-def _looks_like_deep_output_inspection_request(text: str) -> bool:
-    """'notlar giderildi mi', 'çıktıları incele', 'kalan ne var' gibi derin audit sorguları."""
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not lower:
-        return False
-    has_job = bool(
-        _extract_job_id(visible_text)
-        or _selected_job_id_from_context(text)
-        or _job_id_from_memory_context(text)
-        or any(phrase in lower for phrase in ("bu isin", "bu isi", "secili is", "secilen is"))
-    )
-    if not has_job:
-        return False
-    deep_phrases = (
-        "giderilip giderilmedi",
-        "giderildi mi",
-        "giderilmis mi",
-        "kapandi mi",
-        "kapanmis mi",
-        "gercekten kapandi",
-        "gercekten tamam",
-        "gercekten giderildi",
-        "tum ciktilari incele",
-        "tum proje cikti",
-        "ciktilari incele",
-        "ciktilara bak",
-        "kalan ne var",
-        "kalan isler",
-        "kalan sorunlar",
-        "eksik ne var",
-        "ne kaldi",
-        "ne eksik",
-        "hepsi tamam mi",
-        "hepsi giderildi mi",
-        "notlar giderildi",
-        "notlar kapandi",
-    )
-    return any(phrase in lower for phrase in deep_phrases)
-
-
-def _looks_like_mark_column_position_hint_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not lower:
-        return False
-    has_job = bool(
-        _extract_job_id(visible_text)
-        or _selected_job_id_from_context(text)
-        or _job_id_from_memory_context(text)
-        or any(phrase in lower for phrase in ("bu isin", "bu isi", "secili is", "secilen is"))
-    )
-    if not has_job:
-        return False
-    return (
-        "poz" in lower
-        and "mark" in lower
-        and any(term in lower for term in ("sutun", "sutn", "kolon", "tablo", "alt kisim", "alt kism"))
-    )
-
-
-def _looks_like_position_info_resolution_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not lower:
-        return False
-    has_job = bool(
-        _extract_job_id(visible_text)
-        or _selected_job_id_from_context(text)
-        or _job_id_from_memory_context(text)
-        or any(phrase in lower for phrase in ("bu isin", "bu isi", "secili is", "secilen is"))
-    )
-    if not has_job:
-        return False
-    poz_terms = (
-        "poz bilgisi",
-        "poz biligisi",
-        "poz no",
-        "poz numarasi",
-        "poznosu",
-        "poz no olarak",
-        "poz olarak",
-    )
-    resolution_terms = (
-        "olarak alinabilir",
-        "olarak al",
-        "olarak kullan",
-        "alinabilir",
-        "guncelle",
-    )
-    return any(term in lower for term in poz_terms) and any(term in lower for term in resolution_terms)
-
-
-def _looks_like_page_exclusion_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not lower or "sayfa" not in lower:
-        return False
-    has_job = bool(
-        _extract_job_id(visible_text)
-        or _selected_job_id_from_context(text)
-        or _job_id_from_memory_context(text)
-        or any(phrase in lower for phrase in ("bu isin", "bu isi", "secili is", "secilen is"))
-    )
-    if not has_job:
-        return False
-    no_plate_terms = (
-        "baslik sayfasi",
-        "kapak sayfasi",
-        "plaka yok",
-        "plaka degil",
-        "plaka icermiyor",
-        "plaka bulunmuyor",
-        "plaka cizimi yok",
-        "plaka cizimi bulunmayan",
-        "cizilecek bir plaka yok",
-        "profil detayi",
-        "profil detaylari",
-        "profil sayfasi",
-        "kesit sayfasi",
-        "detay sayfasi",
-        "plaka olarak cizilmesin",
-        "plaka olarak islenmesin",
-    )
-    action_terms = (
-        "atlanmali",
-        "atlansin",
-        "atla",
-        "skip",
-        "isleme alinmasin",
-        "isleme alma",
-        "cizilmesin",
-        "cizilmeyecek",
-        "alinmasin",
-        "dahil etme",
-        "dahil edilmesin",
-        "gecilmeli",
-        "gecilsin",
-        "islemeyecek",
-    )
-    return any(term in lower for term in no_plate_terms) or any(term in lower for term in action_terms)
-
-
-def _looks_like_apply_manager_decision_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not lower:
-        return False
-    # Yetenek/soru ifadeleri bu handler'a girmemeli
-    capability_phrases = ("yapabilir misin", "yapabilir miyim", "yapabilirsen", "yapabilir mi", "nasil yapilir", "nasil yaparsın", "nasil yaparim")
-    if any(p in lower for p in capability_phrases):
-        return False
-    apply_phrases = (
-        "bu soylediklerini yap",
-        "soylediklerini yap",
-        "dediklerini yap",
-        "bunlari yap",
-        "bunu yap",
-        "geregini yap",
-        "gerekeni yap",
-        "karari uygula",
-        "bunu uygula",
-        "bunlari uygula",
-        "uygula",
-        "qc blokla",
-        "teslim kapisini kapat",
-        "partlist kapisini kapat",
-        "eksik olarak isaretle",
-        "yarim olarak isaretle",
-        "durumunu eksik",
-        "durumunu yarim",
-    )
-    return any(phrase in lower for phrase in apply_phrases)
-
-
-def _looks_like_job_completion_continue_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not lower:
-        return False
-    has_job = bool(_extract_job_id(visible_text) or _selected_job_id_from_context(text) or _looks_like_selected_job_reference(lower))
-    if not has_job:
-        return False
-    continue_words = (
-        "devam edelim",
-        "devam et",
-        "ilerleyelim",
-        "tamamlamak icin",
-        "tamamlamak uzere",
-        "isi tamamlamak",
-        "bu isi tamamla",
-        "bu isi bitirelim",
-        "tamamlayalim",
-        "bitirelim",
-    )
-    return any(phrase in lower for phrase in continue_words)
-
-
-def _looks_like_missing_candidate_extraction_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not lower:
-        return False
-    has_job = bool(
-        _extract_job_id(visible_text)
-        or _selected_job_id_from_context(text)
-        or _job_id_from_memory_context(text)
-        or _looks_like_selected_job_reference(lower)
-    )
-    if not has_job:
-        return False
-    # Açık delegasyon/görsel analiz isteği — pdf kelimesi olmadan da geçerli
-    delegation_phrases = (
-        "gorsel analiz",
-        "gorsel analize",
-        "agenta aktar",
-        "ajana aktar",
-        "agent'a aktar",
-        "gorsel agent",
-        "sayfalar analiz",
-        "sayfa analiz",
-        "sayfalari analiz",
-        "eksik sayfalari analiz",
-        "pdf analiz",
-    )
-    if any(phrase in lower for phrase in delegation_phrases):
-        return True
-    # PDF kelimesi varsa eski pattern'lar da geçerli
-    if "pdf" in lower:
-        extraction_phrases = (
-            "pdf uzerinden sen kontrol et",
-            "pdfyi sen kontrol et",
-            "pdf'yi sen kontrol et",
-            "pdfyi oku",
-            "pdf'yi oku",
-            "pdf oku",
-            "pdf uzerinden kontrol",
-            "pdf uzerinden incele",
-            "eksik aday listesini cikar",
-            "aday listesini cikar",
-            "eksik pozlari cikar",
-            "eksik sayfalari oku",
-        )
-        if any(phrase in lower for phrase in extraction_phrases):
-            return True
-        return any(word in lower for word in ("oku", "kontrol", "incele")) and any(word in lower for word in ("aday", "eksik", "sayfa", "poz"))
-    return False
-
-
-def _looks_like_poz_correction_action_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not lower:
-        return False
-    action_phrases = (
-        "aksiyon zamani",
-        "aksiyon zamanı",
-        "bu pozu duzelt",
-        "bu pozu düzelt",
-        "pozu duzelt",
-        "pozu düzelt",
-        "duzeltelim",
-        "düzeltelim",
-        "tekrar uret",
-        "tekrar üret",
-        "yeniden uret",
-        "yeniden üret",
-        "regenerate",
-    )
-    if not any(phrase in lower for phrase in action_phrases):
-        return False
-    return bool(
-        _extract_job_id(visible_text)
-        or _selected_job_id_from_context(text)
-        or _job_id_from_memory_context(text)
-        or _looks_like_selected_job_reference(lower)
-        or "poz" in lower
-    )
-
-
-def _looks_like_corner_reliefs_help_request(lower: str) -> bool:
-    return any(p in lower for p in (
-        "kose bosaltma",
-        "corner relief",
-        "corner_reliefs",
-        "kose bilgisi",
-        "onay hatasi",
-        "kose tipi",
-        "pah bilgisi",
-        "kose ekle",
-        "kose doldurmak",
-    ))
-
-
-_CORNER_RELIEFS_QUESTION_MARKER = "hangi koseler bosaltilacak"
-
-
-def _last_message_was_corner_reliefs_question(history: list[dict]) -> bool:
-    for item in reversed(history[-6:]):
-        if item.get("role") == "assistant":
-            content = _normalize_turkish(str(item.get("content") or ""))
-            if (
-                _CORNER_RELIEFS_QUESTION_MARKER in content
-                or "kose bosaltma bilgisi gerektiriyor" in content
-                or "kose bosaltma bilgisini su adaylar icin soruyorum" in content
-                or "benden beklenen net format su" in content
-                or "kose bilgisini anlayamadim" in content
-                or "konum (alt-sol" in content
-            ):
-                return True
-    return False
-
-
-def _looks_like_corner_relief_meta_question(text: str) -> bool:
-    lower = _normalize_turkish(text)
-    asks_what = any(
-        phrase in lower
-        for phrase in (
-            "hangi kose bilgisini",
-            "hangi kose bilgilerini",
-            "hangi bilgiyi anlamadin",
-            "hangi bilgileri anlamadin",
-            "neyi anlamadin",
-            "ne anlamadin",
-            "ne eksik",
-            "hangi kisim eksik",
-            "hangi detay eksik",
-            "hangi parcalar icin soruyorsun",
-            "hangi parca icin soruyorsun",
-            "hangi pozlar icin soruyorsun",
-            "hangi poz icin soruyorsun",
-            "hangi adaylar icin soruyorsun",
-            "hangi aday icin soruyorsun",
-            "hangi parcalar icin",
-            "hangi pozlar icin",
-            "hangi adaylar icin",
-        )
-    )
-    mentions_corner = any(word in lower for word in ("kose", "pah", "corner"))
-    asks_scope = "hangi" in lower and any(word in lower for word in ("parca", "poz", "aday")) and "icin" in lower
-    return asks_what or asks_scope or ("hangi" in lower and mentions_corner and "anlamadin" in lower)
-
-
-def _looks_like_corner_relief_confirmation(text: str) -> bool:
-    lower = _normalize_turkish(text)
-    return any(
-        phrase in lower
-        for phrase in (
-            "evet bu sekilde ilerle",
-            "evet bu sekilde devam et",
-            "bu sekilde ilerle",
-            "bu sekilde devam et",
-            "bu formatla ilerle",
-            "aynen bu sekilde",
-            "tamam bu sekilde",
-            "dogru bu sekilde",
-        )
-    )
-
-
-def _looks_like_guided_flow_cancel(text: str) -> bool:
-    lower = _normalize_turkish(text)
-    return any(
-        phrase in lower
-        for phrase in (
-            "iptal et",
-            "bu akisi kapat",
-            "bu konuyu kapat",
-            "simdilik gec",
-            "sonra bakariz",
-            "bosver",
-            "vazgectim",
-        )
-    )
-
-
-def _corner_relief_suggestion_from_history(history: list[dict[str, str]]) -> str:
-    for item in reversed(history[-8:]):
-        if item.get("role") != "assistant":
-            continue
-        content = str(item.get("content") or "")
-        suggested = _corner_relief_suggestion_from_prompt(content)
-        if suggested:
-            return suggested
-    return ""
-
-
-def _corner_relief_suggestion_from_prompt(content: str) -> str:
-    if "Benden beklenen net format su:" not in content:
-        return ""
-    suggestion_lines = []
-    for line in content.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("- `") and stripped.endswith("`"):
-            suggestion_lines.append(stripped[3:-1])
-    return "\n".join(suggestion_lines)
-
-
-def _looks_like_skill_promote_request(text: str) -> bool:
-    normalized = _normalize_turkish(_visible_user_text(text).lower())
-    # "proposal <id> onayla" — hem "proposal" hem "onayla" aynı ifadede olmalı
-    has_proposal = "proposal" in normalized
-    has_onayla = "onayla" in normalized or "terfiet" in normalized or "uygula" in normalized
-    has_skill_onay = any(t in normalized for t in ("skill onayla", "memory onayla", "skill terfiet", "memory terfiet"))
-    return (has_proposal and has_onayla) or has_skill_onay
-
-
-def _looks_like_skill_update_request(text: str) -> bool:
-    normalized = _normalize_turkish(_visible_user_text(text).lower())
-    update_terms = (
-        "memory kaydet",
-        "hafizaya kaydet",
-        "skill guncelle",
-        "kurala ekle",
-        "kurali guncelle",
-        "uzman memorye",
-        "uzman hafizasina",
-        "autocad uzman memorye",
-        "kalite kontrol memorye",
-        "bunu kaydet",
-        "bu kurali ekle",
-        "memorye yaz",
-        "agentin hafizasina",
-        "hafizasina ekle",
-        "memory ekle",
-    )
-    agent_terms = ("uzman", "autocad", "kalite kontrol", "dokuman kontrol")
-    has_update = any(t in normalized for t in update_terms)
-    has_agent = any(t in normalized for t in agent_terms)
-    return has_update and has_agent
-
-
-def _extract_target_agent_from_text(text: str) -> str:
-    normalized = _normalize_turkish(text.lower())
-    if "autocad uzman 2" in normalized or "uzman-2" in normalized or "uzman2" in normalized:
-        return "autocad-uzman-2"
-    if "autocad uzman 1" in normalized or "uzman-1" in normalized or "uzman1" in normalized or "autocad uzman" in normalized:
-        return "autocad-uzman-1"
-    if "kalite kontrol" in normalized or "qc" in normalized:
-        return "kalite-kontrol"
-    if "dokuman kontrol" in normalized or "dokuman" in normalized:
-        return "dokuman-kontrol"
-    return "autocad-uzman-1"
-
-
-def _looks_like_polygon_draw_instruction(text: str) -> bool:
-    normalized = _normalize_turkish(text.lower())
-    polygon_terms = (
-        "poligon olarak ciz",
-        "poligon ciz",
-        "poligon komutu",
-        "poligon kontur",
-        "polygon olarak ciz",
-        "polygon ciz",
-        "polygon kontur",
-        "koordinatlar kullanilacak",
-        "kose koordinat",
-        "kontur ciz",
-        "polygon",
-        "poligon",
-    )
-    return any(term in normalized for term in polygon_terms)
-
-
-def _extract_poz_no_from_text(text: str) -> str | None:
-    """Metindeki ilk poz numarasını döndürür (3-6 haneli sayı)."""
-    match = re.search(r"\b([0-9]{3,6})\b", text)
-    return match.group(1) if match else None
-
-
-def _extract_all_poz_nos_from_text(text: str) -> list[str]:
-    """Metindeki tüm poz numaralarını (3-6 haneli sayılar) döndürür."""
-    return re.findall(r"\b([0-9]{3,6})\b", text)
-
-
-def _candidates_needing_corner_reliefs(candidates: list[Any]) -> list[dict]:
-    strong_terms = ("pah", "chamfer", "poligon", "polygon", "polygonal", "chamfered", "side offset", "edge offset")
-    result: list[dict] = []
-    for i, item in enumerate(candidates, start=1):
-        if not isinstance(item, dict):
-            continue
-        reliefs = item.get("corner_reliefs")
-        if isinstance(reliefs, list) and reliefs:
-            continue  # dolu veya polygon_contour ile isaretlenmis
-        contour_type = str(item.get("contour_type") or "").strip().lower()
-        evidence = str(item.get("evidence") or item.get("reason") or "").strip().lower()
-        combined = f"{contour_type} {evidence}"
-        if any(term in combined for term in strong_terms):
-            row = dict(item)
-            row["_row_index"] = i
-            result.append(row)
-    return result
-
-
-def _merge_flow_pending(stored_pending: list[dict[str, Any]], current_pending: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not stored_pending:
-        return current_pending
-    stored_indices = {
-        int(item["_row_index"])
-        for item in stored_pending
-        if isinstance(item, dict) and isinstance(item.get("_row_index"), int)
-    }
-    if not stored_indices:
-        return current_pending
-    filtered = [
-        item
-        for item in current_pending
-        if isinstance(item.get("_row_index"), int) and int(item["_row_index"]) in stored_indices
-    ]
-    return filtered or current_pending
-
-
-def _parse_corner_reliefs_from_text(text: str) -> list[dict[str, Any]]:
-    normalized = _normalize_turkish(text.lower())
-    corner_map: dict[str, str] = {
-        "alt-sol": "bottom_left",
-        "alt sol": "bottom_left",
-        "bottom_left": "bottom_left",
-        "alt-sag": "bottom_right",
-        "alt sag": "bottom_right",
-        "bottom_right": "bottom_right",
-        "ust-sol": "top_left",
-        "ust sol": "top_left",
-        "top_left": "top_left",
-        "ust-sag": "top_right",
-        "ust sag": "top_right",
-        "top_right": "top_right",
-    }
-    all_corners = ["bottom_left", "bottom_right", "top_left", "top_right"]
-    is_all = any(w in normalized for w in ("hepsi", "tumu", "her kose", "tum koseler", "4 kose"))
-    radius_m = re.search(r"(\d+(?:\.\d+)?)\s*mm", normalized)
-    radius: float
-    if radius_m:
-        radius = float(radius_m.group(1))
-    else:
-        num_m = re.search(r"\b(\d+(?:\.\d+)?)\b", normalized)
-        radius = float(num_m.group(1)) if num_m else 5.0
-    if any(w in normalized for w in ("round", "yuvarlak", "radius")):
-        relief_type = "round"
-    elif "cugul" in normalized:
-        relief_type = "cugul"
-    else:
-        relief_type = "chamfer"
-    corners = all_corners if is_all else []
-    if not is_all:
-        for key, corner_val in corner_map.items():
-            if key in normalized and corner_val not in corners:
-                corners.append(corner_val)
-    if not corners:
-        return []
-    return [{"corner": c, "radius": radius, "relief_type": relief_type, "x_offset": radius, "y_offset": radius} for c in corners]
-
-
-def _parse_corner_reliefs_by_pending_candidate(text: str, pending: list[dict]) -> dict[int, list[dict[str, Any]]]:
-    normalized = _normalize_turkish(text)
-    pending_by_poz = {str(item.get("poz_no")): item for item in pending if item.get("poz_no")}
-    occurrences: list[tuple[int, str]] = []
-    for poz_no in pending_by_poz:
-        occurrences.extend((match.start(), poz_no) for match in re.finditer(rf"\b{re.escape(poz_no)}\b", normalized))
-    occurrences.sort()
-    if not occurrences and len(pending) == 1:
-        parsed = _parse_corner_relief_segment(normalized)
-        return {int(pending[0]["_row_index"]): parsed} if parsed else {}
-
-    result: dict[int, list[dict[str, Any]]] = {}
-    for idx, (start, poz_no) in enumerate(occurrences):
-        end = occurrences[idx + 1][0] if idx + 1 < len(occurrences) else len(normalized)
-        segment = normalized[start:end]
-        parsed = _parse_corner_relief_segment(segment)
-        if parsed:
-            result[int(pending_by_poz[poz_no]["_row_index"])] = parsed
-    return result
-
-
-def _parse_corner_relief_segment(segment: str) -> list[dict[str, Any]]:
-    corner_mentions = _corner_mentions(segment)
-    if not corner_mentions:
-        if any(word in segment for word in ("hepsi", "tumu", "her kose", "tum koseler", "4 kose")):
-            corner_mentions = [(0, len(segment), ["bottom_left", "bottom_right", "top_left", "top_right"])]
-        else:
-            return []
-    reliefs: list[dict[str, Any]] = []
-    for index, (start, end, corners) in enumerate(corner_mentions):
-        next_start = corner_mentions[index + 1][0] if index + 1 < len(corner_mentions) else len(segment)
-        chunk = segment[end:next_start]
-        x_offset, y_offset = _corner_size_from_text(chunk) or _corner_size_from_text(segment) or (5.0, 5.0)
-        relief_type = _relief_type_from_text(chunk or segment)
-        for corner in corners:
-            reliefs.append(
-                {
-                    "corner": corner,
-                    "radius": min(x_offset, y_offset),
-                    "relief_type": relief_type,
-                    "x_offset": x_offset,
-                    "y_offset": y_offset,
-                }
-            )
-    return _dedupe_corner_reliefs(reliefs)
-
-
-def _corner_mentions(text: str) -> list[tuple[int, int, list[str]]]:
-    patterns: list[tuple[str, list[str]]] = [
-        (r"sol\s+ve\s+sag\s+ust", ["top_left", "top_right"]),
-        (r"sag\s+ve\s+sol\s+ust", ["top_left", "top_right"]),
-        (r"ust\s+sol\s+ve\s+sag", ["top_left", "top_right"]),
-        (r"ust\s+sag\s+ve\s+sol", ["top_left", "top_right"]),
-        (r"sol\s+ve\s+sag\s+alt", ["bottom_left", "bottom_right"]),
-        (r"sag\s+ve\s+sol\s+alt", ["bottom_left", "bottom_right"]),
-        (r"alt\s+sol\s+ve\s+sag", ["bottom_left", "bottom_right"]),
-        (r"alt\s+sag\s+ve\s+sol", ["bottom_left", "bottom_right"]),
-        (r"sol\s+ust", ["top_left"]),
-        (r"ust\s+sol", ["top_left"]),
-        (r"sag\s+ust", ["top_right"]),
-        (r"ust\s+sag", ["top_right"]),
-        (r"sol\s+alt", ["bottom_left"]),
-        (r"alt\s+sol", ["bottom_left"]),
-        (r"sag\s+alt", ["bottom_right"]),
-        (r"alt\s+sag", ["bottom_right"]),
-    ]
-    mentions: list[tuple[int, int, list[str]]] = []
-    spans: list[tuple[int, int]] = []
-    for pattern, corners in patterns:
-        for match in re.finditer(pattern, text):
-            span = match.span()
-            if any(max(span[0], used[0]) < min(span[1], used[1]) for used in spans):
-                continue
-            spans.append(span)
-            mentions.append((span[0], span[1], corners))
-    return sorted(mentions, key=lambda item: item[0])
-
-
-def _corner_size_from_text(text: str) -> tuple[float, float] | None:
-    pair = re.search(r"(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)", text)
-    if pair:
-        return float(pair.group(1).replace(",", ".")), float(pair.group(2).replace(",", "."))
-    single = re.search(r"(\d+(?:[.,]\d+)?)\s*mm", text)
-    if single:
-        value = float(single.group(1).replace(",", "."))
-        return value, value
-    return None
-
-
-def _relief_type_from_text(text: str) -> str:
-    if any(word in text for word in ("round", "yuvarlak", "radius")):
-        return "round"
-    if "cugul" in text:
-        return "cugul"
-    return "chamfer"
-
-
-def _dedupe_corner_reliefs(reliefs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    result: dict[str, dict[str, Any]] = {}
-    for relief in reliefs:
-        result[str(relief["corner"])] = relief
-    return list(result.values())
-
-
-def _apply_corner_reliefs_to_candidates(
-    all_candidates: list[Any],
-    reliefs_by_row_index: dict[int, list[dict]],
-) -> list[dict]:
-    result: list[dict] = []
-    for i, candidate in enumerate(all_candidates, start=1):
-        if not isinstance(candidate, dict):
-            continue
-        row = {k: v for k, v in candidate.items() if not k.startswith("_")}
-        if i in reliefs_by_row_index:
-            row["corner_reliefs"] = reliefs_by_row_index[i]
-        result.append(row)
-    return result
-
-
-def _write_codex_candidates(output_dir: Path, codex_data: dict[str, Any], candidates: list[dict]) -> None:
-    updated = dict(codex_data) if isinstance(codex_data, dict) else {}
-    updated["candidates"] = candidates
-    (output_dir / "codex_candidates.json").write_text(json.dumps(updated, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-def _pozs_for_relief_rows(candidates: list[dict], reliefs_by_row_index: dict[int, list[dict]]) -> list[str]:
-    pozs: list[str] = []
-    for index in sorted(reliefs_by_row_index):
-        if 1 <= index <= len(candidates):
-            pozs.append(str(candidates[index - 1].get("poz_no") or f"satir {index}"))
-    return pozs
-
-
-def _format_corner_reliefs_question(job_id: str, pending: list[dict]) -> str:
-    lines = [f"`{job_id}` isinde su adaylar kose bosaltma bilgisi gerektiriyor ama bos:"]
-    for item in pending:
-        poz_no = item.get("poz_no") or "?"
-        width = item.get("width")
-        height = item.get("height")
-        thickness = item.get("thickness")
-        evidence = str(item.get("evidence") or item.get("contour_type") or "").strip()
-        dims = f"{width}x{height}x{thickness}mm" if all(v is not None for v in [width, height, thickness]) else ""
-        ev_short = f", {evidence[:60]}" if evidence else ""
-        lines.append(f"- Satir {item.get('_row_index', '?')}: {poz_no} ({dims}{ev_short})")
-    lines.append("")
-    lines.append("Hangi koseler bosaltilacak ve ne tip/boyut?")
-    lines.append("Ornek: 'hepsi pah 5mm' veya 'alt-sol ve alt-sag round 8mm, ust-sag chamfer 3mm'")
-    return "\n".join(lines)
-
-
-def _format_corner_relief_missing_detail_response(job_id: str, pending: list[dict]) -> str:
-    lines = [
-        f"`{job_id}` icin kose bosaltma bilgisini su adaylar icin soruyorum:",
-    ]
-    for item in pending:
-        poz_no = item.get("poz_no") or "?"
-        width = item.get("width")
-        height = item.get("height")
-        thickness = item.get("thickness")
-        dims = f"{width}x{height}x{thickness}mm" if all(v is not None for v in [width, height, thickness]) else "olcu belirsiz"
-        lines.append(f"- Poz {poz_no}: satir {item.get('_row_index', '?')}, {dims}")
-    lines.extend(
-        [
-            "Eksik kalan kisim, her poz icin kose-konum ve pah olcusunun net eslesmesi.",
-            "Benden beklenen net format su:",
-            "- `206: sol ve sag ust pah 30x120`",
-            "- `207: sol ust pah 30x120, sag alt pah 10x10`",
-            "- `209: sol ve sag ust pah 60x120`",
-        ]
-    )
-    return "\n".join(lines)
-
-
-def _format_corner_relief_ambiguity_response(job_id: str, pending: list[dict]) -> str:
-    pozs = ", ".join(str(item.get("poz_no") or f"satir {item.get('_row_index', '?')}") for item in pending)
-    return (
-        f"`{job_id}` icin kose bosaltma bilgisi hala net degil. Pozlar: {pozs}.\n"
-        "Her poz icin konum (alt-sol, alt-sag, ust-sol, ust-sag veya hepsi), tip "
-        "(pah/round/cugul) ve boyut (mm) birlikte gerekli.\n"
-        "Ornek: `206: sol ve sag ust pah 30x120`"
-    )
-
-
-def _looks_like_job_completion_step_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not lower:
-        return False
-    has_job = bool(
-        _extract_job_id(visible_text)
-        or _selected_job_id_from_context(text)
-        or _job_id_from_memory_context(text)
-        or _looks_like_selected_job_reference(lower)
-    )
-    if not has_job or _completion_step_number_for_request(text) is None:
-        return False
-    action_words = (
-        "adim",
-        "asama",
-        "sec",
-        "secenek",
-        "opsiyon",
-        "devam",
-        "basla",
-        "baslayalim",
-        "bslayalim",
-        "gec",
-        "gecelim",
-        "ilerle",
-        "ilerleyelim",
-        "yap",
-        "yapalim",
-        "kontrol",
-        "pdf",
-    )
-    return any(word in lower for word in action_words)
-
-
-def _completion_step_number_for_request(text: str) -> int | None:
-    visible_text = _visible_user_text(text)
-    visible_lower = _normalize_turkish(visible_text)
-    explicit_step = _completion_step_number(visible_text)
-    if explicit_step is not None:
-        return explicit_step
-    if "pdf" in visible_lower and any(word in visible_lower for word in ("kontrol", "incele", "oku")):
-        return 1
-    short_continue = visible_lower.strip() in {"devam", "devam et", "ilerle"} or re.fullmatch(r"(devam|ilerle)\s+(et|edelim)", visible_lower.strip()) is not None
-    if short_continue:
-        full_lower = _normalize_turkish(text)
-        if any(
-            phrase in full_lower
-            for phrase in (
-                "pdf uzerinden",
-                "pdf'yi sen kontrol",
-                "pdfyi sen kontrol",
-                "1. adimi baslattim",
-                "eksik sayfa kapsami",
-                "sayfa 4-26",
-            )
-        ):
-            return 1
-    return None
-
-
-def _completion_step_number(text: str) -> int | None:
-    lower = _normalize_turkish(text)
-    for pattern in (
-        r"\b([1-4])\s*[\.)]?\s*(?:adim|asama)",
-        r"\b(?:adim|asama)\s*([1-4])\b",
-        r"\b([1-4])\s*(?:numarali|nolu|no\s*lu)?\s*(?:sec\w*|opsiyon|tercih)",
-        r"\b(?:sec\w*|opsiyon|tercih)\s*([1-4])\b",
-    ):
-        match = re.search(pattern, lower)
-        if match:
-            return int(match.group(1))
-    word_steps = {
-        "ilk": 1,
-        "birinci": 1,
-        "ikinci": 2,
-        "ucuncu": 3,
-        "dorduncu": 4,
-    }
-    for word, step in word_steps.items():
-        if word in lower and ("adim" in lower or "asama" in lower):
-            return step
-    if re.search(r"^\s*1\s*[\.)]", lower) and any(word in lower for word in ("basla", "baslayalim", "bslayalim", "gec", "yap")):
-        return 1
-    return None
-
-
-def _looks_like_confirmed_job_reset(lower: str) -> bool:
-    return any(
-        phrase in lower
-        for phrase in (
-            "temiz baslat",
-            "temiz basla",
-            "sifirla",
-            "resetle",
-            "reset at",
-        )
-    )
-
 
 def _build_live_job_context(paths: "RuntimePaths", job_id: str) -> str:
     """Seçili işin anlık durumunu Gemini system prompt'una enjekte etmek için okur."""
@@ -2276,7 +1560,444 @@ def _build_live_job_context(paths: "RuntimePaths", job_id: str) -> str:
     return "\n".join(lines)
 
 
+
+def _manager_failed_job_repair_proposal(paths: RuntimePaths, job_id: str) -> dict[str, Any]:
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    if not job_dir.exists():
+        return {"actionable": False, "error": "job_not_found"}
+    fsm = _read_json_file(output_dir / "fsm_state.json") or {}
+    if not isinstance(fsm, dict) or fsm.get("state") != "failed":
+        return {"actionable": False}
+    repair = _repair_approved_spec_corner_reliefs(job_dir, apply=False)
+    if repair.get("ambiguous"):
+        return {"actionable": False, "ambiguous": True, **repair}
+    if repair.get("changed"):
+        return {"actionable": True, **repair}
+    return {"actionable": False, **repair}
+
+
+def _apply_approved_spec_repair_and_rerun(
+    paths: RuntimePaths,
+    tools: ToolRegistry,
+    job_id: str,
+    *,
+    session_id: str | None = None,
+) -> dict[str, Any]:
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    if not job_dir.exists():
+        return {"ok": False, "job_id": job_id, "error": "job_not_found"}
+    fsm = get_fsm(paths.jobs_output_root)
+    if fsm.is_in_progress(job_id):
+        return {"ok": False, "job_id": job_id, "error": "job_in_progress", "fsm_state": fsm.get_state(job_id).value}
+
+    repair = _repair_approved_spec_corner_reliefs(job_dir, apply=True)
+    if repair.get("ambiguous"):
+        return {"ok": False, "job_id": job_id, "error": "repair_ambiguous", "repair": repair}
+    if not repair.get("changed"):
+        return {"ok": False, "job_id": job_id, "error": "no_repair_needed", "repair": repair}
+
+    fsm.force_transition(job_id, JobState.PRODUCING, reason="manager_confirmed_approved_spec_repair")
+    append_job_event(
+        paths,
+        job_id,
+        "production_started",
+        {"scope": "manager_action_confirmation", "repair_summary": repair.get("summary")},
+    )
+    pipeline = tools.run("run_autocad_job", {"job_id": job_id, "autocad_live_policy": "off"})
+    summary = pipeline.get("summary") if isinstance(pipeline.get("summary"), dict) else (_read_json_file(output_dir / "job_summary.json") or {})
+    if not pipeline.get("ok"):
+        fsm.force_transition(job_id, JobState.FAILED, reason=str(pipeline.get("error") or "pipeline_failed"))
+        append_job_event(paths, job_id, "failed", {"error": pipeline.get("error") or "pipeline_failed"})
+        return {"ok": False, "job_id": job_id, "error": pipeline.get("error"), "repair": repair, "pipeline": pipeline}
+    if isinstance(summary, dict) and summary.get("ok") is True:
+        completion = complete_approved_job(
+            paths,
+            job_id,
+            summary,
+            approved_count=_approved_spec_row_count(job_dir),
+            session_id=session_id,
+        )
+        return {
+            "ok": bool(completion.get("ok")),
+            "job_id": job_id,
+            "repair": repair,
+            "pipeline": pipeline,
+            "summary": summary,
+            "partlist": completion.get("partlist"),
+            "retrospective": completion.get("retrospective"),
+            "message": completion.get("message"),
+            "error": completion.get("error"),
+            "fsm_state": get_fsm(paths.jobs_output_root).get_state(job_id).value,
+        }
+    fsm.force_transition(job_id, JobState.AWAITING_APPROVAL, reason="manager_repair_manual_review_pending")
+    return {
+        "ok": False,
+        "job_id": job_id,
+        "error": "manual_review_or_qc_pending",
+        "repair": repair,
+        "pipeline": pipeline,
+        "summary": summary,
+        "fsm_state": get_fsm(paths.jobs_output_root).get_state(job_id).value,
+    }
+
+
+def _approved_spec_row_count(job_dir: Path) -> int | None:
+    approved = _read_json_file(job_dir / "approved_plate_specs.json") or {}
+    rows = approved.get("plates", approved) if isinstance(approved, dict) else approved
+    return len(rows) if isinstance(rows, list) else None
+
+
+def _format_manager_repair_confirmation_prompt(paths: RuntimePaths, job_id: str, proposal: dict[str, Any]) -> str:
+    output_dir = paths.jobs_output_root / job_id
+    fsm = _read_json_file(output_dir / "fsm_state.json") or {}
+    details = _read_job_failure_details(output_dir, paths.jobs_import_root / job_id)
+    lines = [
+        f"`{job_id}` icin uygulanabilir bir mudur aksiyonu hazir.",
+        "",
+        "Neden:",
+        f"- FSM: {fsm.get('state', 'failed') if isinstance(fsm, dict) else 'failed'}",
+    ]
+    if details:
+        lines.extend(f"- {line.strip()}" for line in details[:3])
+    lines.extend(
+        [
+            "",
+            "Onerilen duzeltme:",
+            f"- {proposal.get('summary')}",
+        ]
+    )
+    for change in (proposal.get("changes") or [])[:5]:
+        if isinstance(change, dict):
+            lines.append(f"- Satir {change.get('row')} ({change.get('poz_no', '?')}): {change.get('detail')}")
+    if len(proposal.get("changes") or []) > 5:
+        lines.append(f"- ... ve {len(proposal.get('changes') or []) - 5} duzeltme daha.")
+    lines.extend(
+        [
+            "",
+            "Onay verirsen uygulayacagim:",
+            "- approved_plate_specs.json sadece bu duzeltmelerle guncellenecek.",
+            "- Pipeline yeniden calisacak; QC ok olursa partlist ve kapanis zinciri tamamlanacak.",
+            "- Uygulamak icin `yap`, vazgecmek icin `iptal et` yaz.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _format_manager_repair_ambiguous_response(paths: RuntimePaths, job_id: str, proposal: dict[str, Any]) -> str:
+    output_dir = paths.jobs_output_root / job_id
+    details = _read_job_failure_details(output_dir, paths.jobs_import_root / job_id)
+    lines = [
+        f"`{job_id}` icin otomatik uygulanacak guvenli duzeltme cikaramadim.",
+        "",
+        "Neden:",
+    ]
+    if details:
+        lines.extend(f"- {line.strip()}" for line in details[:3])
+    for item in proposal.get("ambiguous_items") or []:
+        if isinstance(item, dict):
+            lines.append(f"- Satir {item.get('row')} ({item.get('poz_no', '?')}), {item.get('corner')}: {item.get('detail')}")
+    lines.extend(
+        [
+            "",
+            "Onerilen duzeltme:",
+            "- Bu kayit icin radius/offset yorumu belirsiz. PDF/evidence netlesmeden dosya degistirmeyecegim.",
+            "",
+            "Onay verirsen uygulayacagim:",
+            "- Net kose tipi ve olcuyu yazarsan sadece o pozu duzeltip yeniden uretimi baslatacagim.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _format_manager_action_apply_response(result: dict[str, Any]) -> str:
+    job_id = str(result.get("job_id") or "")
+    if not result.get("ok"):
+        return (
+            f"`{job_id}` aksiyonu tamamlanamadi.\n"
+            f"- Hata: {result.get('error') or 'bilinmeyen hata'}\n"
+            f"- FSM: {result.get('fsm_state') or 'bilinmiyor'}"
+        )
+    summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+    produced = len(summary.get("produced") or []) if isinstance(summary, dict) else 0
+    manual = len(summary.get("manual_reviews") or []) if isinstance(summary, dict) else 0
+    partlist = result.get("partlist") if isinstance(result.get("partlist"), dict) else {}
+    return "\n".join(
+        [
+            f"`{job_id}` aksiyonunu uyguladim.",
+            f"- FSM: {result.get('fsm_state') or 'completed'}",
+            f"- Uretilen poz: {produced}",
+            f"- QC: {'ok' if summary.get('ok') is True else summary.get('ok')}",
+            f"- Manuel inceleme: {manual}",
+            f"- Partlist: {partlist.get('path') or 'yok'}",
+        ]
+    )
+
+
+def _repair_approved_spec_corner_reliefs(job_dir: Path, *, apply: bool) -> dict[str, Any]:
+    import json as _json
+
+    valid_relief_types = {"round", "cugul", "chamfer", "pah"}
+    valid_corners = {"bottom_left", "bottom_right", "top_left", "top_right"}
+    spec_path = job_dir / "approved_plate_specs.json"
+    if not spec_path.exists():
+        return {"ok": False, "changed": False, "error": "approved_specs_missing"}
+    try:
+        data = _json.loads(spec_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        log.warning("approved_spec_repair_read_failed", path=str(spec_path), error=str(exc))
+        return {"ok": False, "changed": False, "error": f"read_failed: {exc}"}
+    rows = data.get("plates", data) if isinstance(data, dict) else data
+    if not isinstance(rows, list):
+        return {"ok": False, "changed": False, "error": "approved_specs_invalid_shape"}
+
+    changes: list[dict[str, Any]] = []
+    ambiguous: list[dict[str, Any]] = []
+    counters = {"removed": 0, "fixed": 0, "large_offset_removed": 0, "equal_chamfer": 0}
+    changed_rows = 0
+    for row_number, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            continue
+        reliefs = row.get("corner_reliefs")
+        if not isinstance(reliefs, list):
+            continue
+        clean: list[dict[str, Any]] = []
+        seen_corners: set[str] = set()
+        row_changed = False
+        for relief_number, original in enumerate(reliefs, start=1):
+            if not isinstance(original, dict):
+                counters["removed"] += 1
+                row_changed = True
+                changes.append(_repair_change(row_number, row, "remove_invalid_relief", f"corner relief {relief_number} is not an object"))
+                continue
+            relief = dict(original)
+            raw_type = str(relief.get("relief_type") or relief.get("type") or "")
+            normalized_type = _approved_repair_relief_type(raw_type)
+            if normalized_type == "polygon_contour" or not relief.get("corner"):
+                counters["removed"] += 1
+                row_changed = True
+                changes.append(_repair_change(row_number, row, "remove_sentinel_or_missing_corner", f"corner relief {relief_number} ignored"))
+                continue
+            raw_corner = str(relief.get("corner") or "")
+            normalized_corner = _approved_repair_corner(raw_corner)
+            if normalized_corner not in valid_corners:
+                counters["removed"] += 1
+                row_changed = True
+                changes.append(_repair_change(row_number, row, "remove_unknown_corner", f"{raw_corner!r} is not a supported corner"))
+                continue
+            if normalized_corner in seen_corners:
+                counters["removed"] += 1
+                row_changed = True
+                changes.append(_repair_change(row_number, row, "remove_duplicate_corner", f"{normalized_corner} duplicate removed"))
+                continue
+            seen_corners.add(normalized_corner)
+            if normalized_corner != raw_corner:
+                relief["corner"] = normalized_corner
+                counters["fixed"] += 1
+                row_changed = True
+                changes.append(_repair_change(row_number, row, "normalize_corner", f"{raw_corner} -> {normalized_corner}"))
+            if normalized_type not in valid_relief_types:
+                relief["relief_type"] = "round"
+                counters["fixed"] += 1
+                row_changed = True
+                changes.append(_repair_change(row_number, row, "normalize_relief_type", f"{raw_type!r} -> round"))
+            elif normalized_type != raw_type.strip().lower():
+                relief["relief_type"] = normalized_type
+                counters["fixed"] += 1
+                row_changed = True
+                changes.append(_repair_change(row_number, row, "normalize_relief_type", f"{raw_type!r} -> {normalized_type}"))
+            if "type" in relief and "relief_type" not in relief:
+                relief["relief_type"] = normalized_type
+
+            chamfer_size = _equal_chamfer_size_from_evidence(row)
+            if chamfer_size is not None and relief.get("relief_type") == "round":
+                radius = _float_or_none(relief.get("radius"))
+                if radius is None or abs(radius - chamfer_size) <= 1e-6:
+                    relief["relief_type"] = "chamfer"
+                    relief["radius"] = chamfer_size
+                    relief["x_offset"] = chamfer_size
+                    relief["y_offset"] = chamfer_size
+                    counters["equal_chamfer"] += 1
+                    row_changed = True
+                    changes.append(_repair_change(row_number, row, "equal_size_chamfer", f"{chamfer_size:g}x{chamfer_size:g} treated as chamfer"))
+
+            too_large_detail = _relief_too_large_detail(row, relief)
+            if too_large_detail:
+                if _evidence_says_offset_not_radius(row, relief):
+                    counters["large_offset_removed"] += 1
+                    row_changed = True
+                    _append_repair_note(row, f"manager_repair_removed_non_relief_offset:{normalized_corner}:{too_large_detail}")
+                    changes.append(_repair_change(row_number, row, "remove_non_relief_offset", f"{normalized_corner} {too_large_detail}"))
+                    continue
+                ambiguous.append(
+                    {
+                        "row": row_number,
+                        "poz_no": row.get("poz_no"),
+                        "corner": normalized_corner,
+                        "detail": too_large_detail,
+                    }
+                )
+            clean.append(relief)
+        if row_changed or len(clean) != len(reliefs):
+            row["corner_reliefs"] = clean
+            changed_rows += 1
+
+    summary = _format_approved_spec_repair_summary(
+        changed_rows,
+        counters["removed"],
+        counters["fixed"],
+        counters["large_offset_removed"],
+        counters["equal_chamfer"],
+    )
+    if ambiguous:
+        return {
+            "ok": False,
+            "changed": False,
+            "ambiguous": True,
+            "ambiguous_items": ambiguous,
+            "changes": changes,
+            "summary": summary,
+        }
+    changed = any(counters.values())
+    if changed and apply:
+        if isinstance(data, dict):
+            data["plates"] = rows
+        atomic_write_json(spec_path, data)
+    return {
+        "ok": True,
+        "changed": changed,
+        "summary": summary if changed else "approved_plate_specs.json zaten temiz",
+        "changes": changes,
+        "changed_rows": changed_rows,
+    }
+
+
+def _approved_repair_relief_type(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized in {"pah", "bevel", "beveled", "chamfered"}:
+        return "chamfer"
+    if normalized in {"round_relief", "rounded", "radius"}:
+        return "round"
+    return normalized
+
+
+def _approved_repair_corner(value: str) -> str:
+    normalized = value.strip().lower()
+    for base in ("bottom_left", "bottom_right", "top_left", "top_right"):
+        if normalized == base or normalized.startswith(base + "_"):
+            return base
+    aliases = {
+        "bl": "bottom_left",
+        "br": "bottom_right",
+        "tl": "top_left",
+        "tr": "top_right",
+        "sol_alt": "bottom_left",
+        "sag_alt": "bottom_right",
+        "sol_ust": "top_left",
+        "sag_ust": "top_right",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _repair_change(row_number: int, row: dict[str, Any], kind: str, detail: str) -> dict[str, Any]:
+    return {"row": row_number, "poz_no": row.get("poz_no"), "kind": kind, "detail": detail}
+
+
+def _format_approved_spec_repair_summary(
+    changed_rows: int,
+    total_removed: int,
+    total_fixed: int,
+    total_large_offset_removed: int,
+    total_equal_chamfers: int,
+) -> str:
+    parts = []
+    if total_removed:
+        parts.append(f"{total_removed} gecersiz/sentinel kayit kaldirildi")
+    if total_fixed:
+        parts.append(f"{total_fixed} tip/kose normalize edildi")
+    if total_large_offset_removed:
+        parts.append(f"{total_large_offset_removed} radius olmayan offset relief kaldirildi")
+    if total_equal_chamfers:
+        parts.append(f"{total_equal_chamfers} esit olculu pah/chamfer olarak isaretlendi")
+    if not parts:
+        return "approved_plate_specs.json zaten temiz"
+    return f"{changed_rows} satirda: {', '.join(parts)}"
+
+
+def _float_or_none(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(str(value).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def _relief_too_large_detail(row: dict[str, Any], relief: dict[str, Any]) -> str | None:
+    width = _float_or_none(row.get("width"))
+    height = _float_or_none(row.get("height"))
+    radius = _float_or_none(relief.get("radius"))
+    if width is None or height is None or radius is None:
+        return None
+    x_offset = _float_or_none(relief.get("x_offset")) or radius
+    y_offset = _float_or_none(relief.get("y_offset")) or radius
+    if x_offset >= width or y_offset >= height:
+        return f"x_offset={x_offset:g}, y_offset={y_offset:g}, plate={width:g}x{height:g}"
+    return None
+
+
+def _equal_chamfer_size_from_evidence(row: dict[str, Any]) -> float | None:
+    evidence = _normalize_turkish(str(row.get("evidence") or ""))
+    if not evidence or re.search(r"\br\s*\d", evidence):
+        return None
+    matches = re.findall(r"\b(\d+(?:[\.,]\d+)?)\s*[xX]\s*(\d+(?:[\.,]\d+)?)\b", evidence)
+    for left, right in matches:
+        left_value = _float_or_none(left)
+        right_value = _float_or_none(right)
+        if left_value is not None and right_value is not None and abs(left_value - right_value) <= 1e-6:
+            return left_value
+    return None
+
+
+def _evidence_says_offset_not_radius(row: dict[str, Any], relief: dict[str, Any]) -> bool:
+    evidence = _normalize_turkish(str(row.get("evidence") or ""))
+    radius = _float_or_none(relief.get("radius"))
+    if not evidence:
+        return False
+    if radius is not None and re.search(rf"\br\s*{re.escape(f'{radius:g}')}\b", evidence):
+        return False
+    return any(
+        word in evidence
+        for word in (
+            "offset",
+            "upstand",
+            "top view",
+            "ust gorunus",
+            "ust gorun",
+            "bukum",
+            "bending",
+            "flat length",
+            "middle",
+            "orta",
+        )
+    )
+
+
+def _append_repair_note(row: dict[str, Any], note: str) -> None:
+    notes = row.get("notes")
+    if not isinstance(notes, list):
+        notes = []
+    if note not in notes:
+        notes.append(note)
+    row["notes"] = notes
+
+
 def _try_patch_approved_spec_corner_reliefs(job_dir: Path) -> str | None:
+    result = _repair_approved_spec_corner_reliefs(job_dir, apply=True)
+    if not result.get("changed"):
+        return None
+    return str(result.get("summary") or "approved specs repaired")
     """approved_plate_specs.json'da geçersiz corner_relief tiplerini normalize eder.
 
     Döndürür: değişiklik özeti string (örn. "3 satırda 2 kayıt temizlendi") veya
@@ -2316,7 +2037,8 @@ def _try_patch_approved_spec_corner_reliefs(job_dir: Path) -> str | None:
 
     try:
         data = _json.loads(spec_path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        log.warning("approved_spec_patch_read_failed", path=str(spec_path), error=str(exc))
         return None
 
     rows = data.get("plates", data) if isinstance(data, dict) else data
@@ -2380,7 +2102,7 @@ def _try_patch_approved_spec_corner_reliefs(job_dir: Path) -> str | None:
 
     if isinstance(data, dict):
         data["plates"] = rows
-    spec_path.write_text(_json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    atomic_write_json(spec_path, data)
     parts = []
     if total_removed:
         parts.append(f"{total_removed} gecersiz/sentinel kayit kaldirildi")
@@ -2445,7 +2167,7 @@ def _format_job_status_response(paths: RuntimePaths, job_id: str) -> str:
     candidate_count = len(candidates) if isinstance(candidates, list) else 0
     ok_value = summary.get("ok") if isinstance(summary, dict) and "ok" in summary else "bilinmiyor"
     project_name = metadata.get("project_name") if isinstance(metadata, dict) else None
-    open_notes = 0 if ok_value is True else len(_actionable_open_manager_issue_notes(paths, job_id))
+    open_notes = len(_actionable_open_manager_issue_notes(paths, job_id))
 
     lines = [
         f"`{job_id}` durum ozeti:",
@@ -2472,9 +2194,14 @@ def _format_job_status_response(paths: RuntimePaths, job_id: str) -> str:
         lines.append("")
         lines.append(
             "Aksiyon secenekleri:\n"
-            "  - `resetle`: Onaylanmis spec'teki gecersiz corner_relief tiplerini duzelt ve pipeline'i yeniden baslat.\n"
+            "  - Mudur guvenli bir spec tamiri bulursa once onay ister; `yap` dersen uygular ve pipeline'i yeniden baslatir.\n"
             "  - `approved_plate_specs.json` silinmis is icin: adaylari yeniden onayla.\n"
             "  - Tam sifirlama gerekiyorsa: `temiz baslat` veya `sifirdan baslat` yaz."
+        )
+    elif open_notes:
+        lines.append(
+            "Karar: Acik mudur hata notu varken bu is teslim/partlist icin tamamlanmis kabul edilmemeli. "
+            "Once nottaki beklenen/uretilen farklari netlestirip aday/QC duzeltmesi yapilmali."
         )
     elif isinstance(page_count, int) and page_count > produced_count and any(item in {"visual_text_required", "text_layer_unreadable"} for item in classifications):
         lines.append(
@@ -2520,8 +2247,8 @@ def _read_job_failure_details(output_dir: Path, job_dir: Path) -> list[str]:
                 details.append("ApprovedSpecValidationError — onaylanmis speclerde gecersiz corner_relief tipleri:")
                 details.extend(bad_rows)
                 details.append("  → Duzeltmek icin: 'resetle' yaz; sistem tipleri normalize edip pipeline'i yeniden baslatir.")
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("approved_spec_failure_detail_failed", job_id=job_dir.name, error=str(exc))
 
     # 2. events.jsonl'daki son failure / error olayını oku
     events_path = output_dir / "events.jsonl"
@@ -2534,7 +2261,7 @@ def _read_job_failure_details(output_dir: Path, job_dir: Path) -> list[str]:
                     continue
                 try:
                     evt = _json.loads(raw)
-                except Exception:
+                except (json.JSONDecodeError, ValueError):
                     continue
                 event_type = str(evt.get("type") or evt.get("event") or "")
                 payload = evt.get("payload") or {}
@@ -2544,8 +2271,8 @@ def _read_job_failure_details(output_dir: Path, job_dir: Path) -> list[str]:
                     reason = payload.get("reason") or payload.get("error") or evt.get("reason") or event_type
                     details.append(f"Son hata olayi ({event_type}): {reason}")
                     break
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("events_failure_detail_failed", job_id=job_dir.name, error=str(exc))
 
     # 3. job_summary.json'daki hata bilgisi
     summary_path = output_dir / "job_summary.json"
@@ -2561,8 +2288,8 @@ def _read_job_failure_details(output_dir: Path, job_dir: Path) -> list[str]:
                             details.append(f"  - Sayfa {mr.get('page', '?')}: {mr.get('reason', '?')}")
                     if len(manual_reviews) > 5:
                         details.append(f"  ... ve {len(manual_reviews) - 5} madde daha.")
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("summary_failure_detail_failed", job_id=job_dir.name, error=str(exc))
 
     return details
 
@@ -2747,6 +2474,8 @@ def _actionable_open_manager_issue_notes(paths: RuntimePaths, job_id: str) -> li
 def _is_actionable_manager_issue_note(note: dict[str, Any]) -> bool:
     tags = {str(tag).lower() for tag in note.get("tags", []) if str(tag).strip()} if isinstance(note.get("tags"), list) else set()
     actionable_tags = {
+        "hata bildirimi",
+        "delik koordinati",
         "pah/kose eksigi",
         "poligon kontur",
         "gorsel analiz notu",
@@ -3137,8 +2866,8 @@ def _apply_page_exclusion_decision(
         for _pdf in (paths.jobs_import_root / job_id).glob("*.pdf"):
             _sha256 = _hashlib.sha256(_pdf.read_bytes()).hexdigest()
             _bridge.record_page_exclusion(_sha256, job_id, pages, note[:200])
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("page_exclusion_memory_record_failed", job_id=job_id, error=str(exc))
     resolved_notes = _resolve_open_manager_notes_matching(
         paths,
         job_id,
@@ -3225,10 +2954,7 @@ def _write_page_exclusions_json(paths: RuntimePaths, job_id: str, pages: list[in
                 "decided_at": decided_at,
             }
         )
-    path.write_text(
-        json.dumps({"schema_version": 1, "excluded_pages": exclusions}, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    atomic_write_json(path, {"schema_version": 1, "excluded_pages": exclusions})
     return path
 
 
@@ -3306,6 +3032,56 @@ def _apply_mark_column_position_hint(
         keywords=("mark", "sutun", "sutn", "tablo", "alt kisim", "alt kism"),
         resolution="manager_mark_column_position_hint uygulandi",
     )
+
+    # If Codex already extracted visual candidates, the deterministic pipeline
+    # will fail again (no text layer). Return early and direct manager to approve.
+    codex_candidates_path = output_dir / "codex_candidates.json"
+    existing_codex = _read_json_file(codex_candidates_path)
+    if (
+        isinstance(existing_codex, dict)
+        and isinstance(existing_codex.get("candidates"), list)
+        and len(existing_codex["candidates"]) > 0
+    ):
+        fsm.force_transition(job_id, JobState.AWAITING_APPROVAL, reason="manager_mark_column_hint_codex_candidates_exist")
+        append_job_event(
+            paths,
+            job_id,
+            "position_hint_noted",
+            {
+                "scope": "manager_mark_column_position_hint",
+                "position_hints_path": _relative_to_suite(paths, hints_path),
+                "codex_candidates_count": len(existing_codex["candidates"]),
+                "note": "Codex gorsel adaylari mevcut; deterministic pipeline yeniden calistirilmadi.",
+            },
+        )
+        candidates = existing_codex["candidates"]
+        return {
+            "ok": False,
+            "job_id": job_id,
+            "position_hints_path": _relative_to_suite(paths, hints_path),
+            "resolved_note_count": resolved_notes,
+            "pipeline_ok": False,
+            "summary_ok": None,
+            "manual_reviews": [],
+            "manual_review_count": 0,
+            "reviews_with_poz_count": len([c for c in candidates if c.get("poz_no")]),
+            "poz_not_found_count": 0,
+            "produced_count": 0,
+            "fsm_state": JobState.AWAITING_APPROVAL.value,
+            "codex_candidates_exist": True,
+            "codex_candidates_count": len(candidates),
+            "codex_poz_numbers": [c.get("poz_no") for c in candidates if c.get("poz_no")],
+            "partlist": None,
+            "retrospective": None,
+            "message": (
+                f"Codex gorsel analizi zaten {len(candidates)} aday buldu "
+                f"(poz: {', '.join(c.get('poz_no','?') for c in candidates if c.get('poz_no'))}). "
+                "PDF metin katmani olmadigi icin deterministic pipeline yeniden calistirilmadi. "
+                "Dashboard Adaylar panelinden adaylari inceleyip 'Secili Adaylari Onayla' butonunu kullanin."
+            ),
+            "error": None,
+        }
+
     fsm.force_transition(job_id, JobState.PRODUCING, reason="manager_mark_column_position_hint")
     append_job_event(
         paths,
@@ -3388,6 +3164,17 @@ def _format_mark_column_position_hint_response(result: dict[str, Any]) -> str:
     job_id = str(result.get("job_id") or "")
     if not result.get("pipeline_ok", False) and result.get("error"):
         return f"`{job_id}` icin Mark sutunu poz okuma kuralini uygulayamadim: {result.get('error')}"
+    if result.get("codex_candidates_exist"):
+        poz_list = ", ".join(result.get("codex_poz_numbers") or []) or "?"
+        return (
+            f"`{job_id}` icin Mark sutunu poz bilgisi kaydedildi.\n"
+            f"- Codex gorsel analizi zaten {result.get('codex_candidates_count', 0)} aday buldu (poz: {poz_list}).\n"
+            f"- PDF metin katmani olmadigi icin pipeline yeniden calistirilmadi — bu dogru davranis.\n"
+            f"- Kapatilan mudur notu: {result.get('resolved_note_count', 0)}\n"
+            f"- FSM: {result.get('fsm_state')}\n\n"
+            "**Sonraki adim:** Dashboard > 123 isi > Adaylar paneli > adaylari kontrol edip "
+            "'Secili Adaylari Onayla' butonuna basin. Onay sonrasi DXF/NC1 uretimi baslar."
+        )
     lines = [
         f"`{job_id}` icin Mark sutunu poz okuma bilgisini uyguladim ve isi yeniden calistirdim.",
         f"- position_hints.json: {result.get('position_hints_path')}",
@@ -3477,7 +3264,7 @@ def _apply_corner_relief_correction(
     if note_text not in notes:
         notes.append(note_text)
     target["notes"] = notes
-    approved_path.write_text(json.dumps(approved, indent=2, ensure_ascii=False), encoding="utf-8")
+    atomic_write_json(approved_path, approved)
 
     resolved_notes = _resolve_geometry_notes_with_approved_reliefs(paths, job_id)
     fsm = get_fsm(paths.jobs_output_root)
@@ -3550,6 +3337,237 @@ def _format_poz_correction_response(result: dict[str, Any]) -> str:
         lines.append(str(result["message"]))
     elif result.get("error"):
         lines.append(f"- Kapanis blokaji: {result.get('error')}")
+    return "\n".join(lines)
+
+
+def _parse_hole_coordinate_correction(text: str, row: dict[str, Any]) -> dict[str, Any] | None:
+    pairs = _coordinate_pairs_from_text(text)
+    if not pairs:
+        return None
+    target_x, target_y = pairs[-1]
+    previous_x: float | None = None
+    previous_y: float | None = None
+    if len(pairs) >= 2:
+        previous_x, previous_y = pairs[-2]
+    width = _float_or_zero(row.get("width"))
+    height = _float_or_zero(row.get("height"))
+    if width > 0 and not (0 <= target_x <= width):
+        return None
+    if height > 0 and not (0 <= target_y <= height):
+        return None
+    selector = _hole_selector_from_text(text)
+    return {
+        "previous_x": previous_x,
+        "previous_y": previous_y,
+        "x": target_x,
+        "y": target_y,
+        "selector": selector,
+        "source_text": _short_text(text, 260),
+    }
+
+
+def _coordinate_pairs_from_text(text: str) -> list[tuple[float, float]]:
+    pairs: list[tuple[float, float]] = []
+    pattern = re.compile(
+        r"\bx\s*[:=]?\s*([0-9]+(?:[.,][0-9]+)?)\s*(?:[,;/\s]+)\s*y\s*[:=]?\s*([0-9]+(?:[.,][0-9]+)?)",
+        flags=re.IGNORECASE,
+    )
+    for match in pattern.finditer(text):
+        pairs.append((_parse_decimal(match.group(1)), _parse_decimal(match.group(2))))
+    return pairs
+
+
+def _parse_decimal(value: str) -> float:
+    return float(str(value).replace(",", "."))
+
+
+def _hole_selector_from_text(text: str) -> str | None:
+    lower = _normalize_turkish(text)
+    if "alt delik" in lower or "lower hole" in lower:
+        return "lower"
+    if "ust delik" in lower or "upper hole" in lower:
+        return "upper"
+    if "sol delik" in lower or "left hole" in lower:
+        return "left"
+    if "sag delik" in lower or "right hole" in lower:
+        return "right"
+    return None
+
+
+def _select_hole_index(holes: list[Any], correction: dict[str, Any]) -> int | None:
+    hole_rows = [hole for hole in holes if isinstance(hole, dict)]
+    if not hole_rows:
+        return None
+    previous_x = correction.get("previous_x")
+    previous_y = correction.get("previous_y")
+    if previous_x is not None and previous_y is not None:
+        distances = [
+            (
+                index,
+                abs(_float_or_zero(hole.get("x")) - float(previous_x))
+                + abs(_float_or_zero(hole.get("y")) - float(previous_y)),
+            )
+            for index, hole in enumerate(holes)
+            if isinstance(hole, dict)
+        ]
+        if distances:
+            index, distance = min(distances, key=lambda item: item[1])
+            if distance <= 5.0:
+                return index
+    selector = correction.get("selector")
+    if selector == "lower":
+        return min(range(len(hole_rows)), key=lambda i: _float_or_zero(hole_rows[i].get("y")))
+    if selector == "upper":
+        return max(range(len(hole_rows)), key=lambda i: _float_or_zero(hole_rows[i].get("y")))
+    if selector == "left":
+        return min(range(len(hole_rows)), key=lambda i: _float_or_zero(hole_rows[i].get("x")))
+    if selector == "right":
+        return max(range(len(hole_rows)), key=lambda i: _float_or_zero(hole_rows[i].get("x")))
+    target_x = correction.get("x")
+    if target_x is not None:
+        close = [
+            index
+            for index, hole in enumerate(holes)
+            if isinstance(hole, dict) and abs(_float_or_zero(hole.get("x")) - float(target_x)) <= 2.0
+        ]
+        if len(close) == 1:
+            return close[0]
+    if len(hole_rows) == 1:
+        return 0
+    return None
+
+
+def _apply_hole_coordinate_correction(
+    paths: RuntimePaths,
+    tools: ToolRegistry,
+    job_id: str,
+    poz_no: str,
+    correction: dict[str, Any],
+    *,
+    session_id: str | None = None,
+) -> dict[str, Any]:
+    job_dir = paths.jobs_import_root / job_id
+    output_dir = paths.jobs_output_root / job_id
+    approved_path = job_dir / "approved_plate_specs.json"
+    if not job_dir.exists():
+        return {"ok": False, "job_id": job_id, "poz_no": poz_no, "error": "job_not_found"}
+    approved = _read_json_file(approved_path)
+    rows = approved.get("plates") if isinstance(approved, dict) and isinstance(approved.get("plates"), list) else None
+    if rows is None:
+        return {"ok": False, "job_id": job_id, "poz_no": poz_no, "error": "approved_specs_missing"}
+
+    target: dict[str, Any] | None = None
+    for row in rows:
+        if isinstance(row, dict) and str(row.get("poz_no")) == poz_no:
+            target = row
+            break
+    if target is None:
+        return {"ok": False, "job_id": job_id, "poz_no": poz_no, "error": "poz_not_in_approved_specs"}
+    holes = target.get("holes")
+    if not isinstance(holes, list) or not holes:
+        return {"ok": False, "job_id": job_id, "poz_no": poz_no, "error": "holes_missing"}
+    hole_index = _select_hole_index(holes, correction)
+    if hole_index is None or not isinstance(holes[hole_index], dict):
+        return {"ok": False, "job_id": job_id, "poz_no": poz_no, "error": "hole_not_identified"}
+
+    hole = holes[hole_index]
+    before = {
+        "x": _float_or_zero(hole.get("x")),
+        "y": _float_or_zero(hole.get("y")),
+        "diameter": _float_or_zero(hole.get("diameter")),
+    }
+    hole["x"] = float(correction["x"])
+    hole["y"] = float(correction["y"])
+    notes = target.get("notes")
+    if not isinstance(notes, list):
+        notes = []
+    note_text = (
+        f"manager_corrected_hole_{hole_index + 1}:"
+        f"{before['x']:g},{before['y']:g}->"
+        f"{float(correction['x']):g},{float(correction['y']):g}"
+    )
+    if note_text not in notes:
+        notes.append(note_text)
+    target["notes"] = notes
+    atomic_write_json(approved_path, approved)
+
+    resolved_notes = _resolve_hole_coordinate_notes(paths, job_id, poz_no)
+    fsm = get_fsm(paths.jobs_output_root)
+    fsm.force_transition(job_id, JobState.PRODUCING, reason="manager_hole_coordinate_correction")
+    append_job_event(
+        paths,
+        job_id,
+        "production_started",
+        {
+            "scope": "hole_coordinate_correction",
+            "poz_no": poz_no,
+            "hole_index": hole_index,
+            "before": before,
+            "after": {"x": correction["x"], "y": correction["y"], "diameter": before["diameter"]},
+        },
+    )
+    pipeline = tools.run("run_autocad_job", {"job_id": job_id, "autocad_live_policy": "off"})
+    summary = pipeline.get("summary") if isinstance(pipeline.get("summary"), dict) else (_read_json_file(output_dir / "job_summary.json") or {})
+    remaining_open_notes = _actionable_open_manager_issue_notes(paths, job_id)
+    completion: dict[str, Any] | None = None
+    if pipeline.get("ok") and isinstance(summary, dict) and summary.get("ok") is True and not remaining_open_notes:
+        completion = complete_approved_job(
+            paths,
+            job_id,
+            summary,
+            approved_count=len(rows),
+            session_id=session_id,
+        )
+    else:
+        fsm.force_transition(job_id, JobState.AWAITING_APPROVAL, reason="manager_hole_coordinate_correction_review")
+
+    qc = _read_json_file(output_dir / poz_no / f"{poz_no}_qc.json") or {}
+    return {
+        "ok": bool(pipeline.get("ok")),
+        "completion_ok": bool(completion and completion.get("ok")),
+        "job_id": job_id,
+        "poz_no": poz_no,
+        "hole_index": hole_index,
+        "before": before,
+        "after": {"x": correction["x"], "y": correction["y"], "diameter": before["diameter"]},
+        "resolved_note_count": resolved_notes,
+        "open_note_count": len(remaining_open_notes),
+        "pipeline_ok": bool(pipeline.get("ok")),
+        "summary_ok": summary.get("ok") if isinstance(summary, dict) else None,
+        "qc_ok": qc.get("ok") if isinstance(qc, dict) else None,
+        "fsm_state": get_fsm(paths.jobs_output_root).get_state(job_id).value,
+        "partlist": completion.get("partlist") if isinstance(completion, dict) else None,
+        "message": completion.get("message") if isinstance(completion, dict) else None,
+        "error": None if pipeline.get("ok") else pipeline.get("error"),
+    }
+
+
+def _format_hole_coordinate_correction_response(result: dict[str, Any]) -> str:
+    job_id = str(result.get("job_id") or "")
+    poz_no = str(result.get("poz_no") or "")
+    if not result.get("ok"):
+        return f"`{job_id}` Poz {poz_no} delik koordinati duzeltmesi uygulanamadi: {result.get('error')}"
+    before = result.get("before") if isinstance(result.get("before"), dict) else {}
+    after = result.get("after") if isinstance(result.get("after"), dict) else {}
+    lines = [
+        f"`{job_id}` Poz {poz_no} icin delik koordinati duzeltmesini uyguladim.",
+        (
+            f"- Delik #{int(result.get('hole_index', 0)) + 1}: "
+            f"X={float(before.get('x') or 0):g} Y={float(before.get('y') or 0):g} -> "
+            f"X={float(after.get('x') or 0):g} Y={float(after.get('y') or 0):g}"
+        ),
+        f"- Yeniden uretim/QC: ok={str(result.get('summary_ok')).lower()}, poz QC={str(result.get('qc_ok')).lower()}",
+        f"- FSM: {result.get('fsm_state')}",
+        f"- Kapatilan delik notu: {result.get('resolved_note_count', 0)}",
+    ]
+    if result.get("open_note_count"):
+        lines.append(f"- Acik mudur notu: {result.get('open_note_count')} (is tamamlanmis kabul edilmemeli)")
+    partlist = result.get("partlist")
+    if isinstance(partlist, dict) and partlist.get("path"):
+        lines.append(f"- Partlist guncellendi: {partlist.get('path')}")
+    if result.get("message"):
+        lines.append("")
+        lines.append(str(result["message"]))
     return "\n".join(lines)
 
 
@@ -3703,6 +3721,37 @@ def _resolve_geometry_notes_with_approved_reliefs(paths: RuntimePaths, job_id: s
     return resolved
 
 
+def _resolve_hole_coordinate_notes(paths: RuntimePaths, job_id: str, poz_no: str) -> int:
+    output_dir = paths.jobs_output_root / job_id
+    path = output_dir / "manager_issue_notes.jsonl"
+    if not path.exists():
+        return 0
+    resolved = 0
+    rewritten: list[str] = []
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        try:
+            note = json.loads(line)
+        except json.JSONDecodeError:
+            rewritten.append(line)
+            continue
+        if not isinstance(note, dict) or note.get("status") not in {None, "open"}:
+            rewritten.append(json.dumps(note, ensure_ascii=False))
+            continue
+        tags = {str(tag).lower() for tag in note.get("tags", []) if str(tag).strip()} if isinstance(note.get("tags"), list) else set()
+        affected = [str(value) for value in note.get("affected_pozs", [])] if isinstance(note.get("affected_pozs"), list) else []
+        message = _normalize_turkish(str(note.get("message") or ""))
+        if poz_no in affected and ("delik koordinati" in tags or "delik" in message or "hole" in message):
+            note = dict(note)
+            note["status"] = "resolved"
+            note["resolved_at"] = _now_iso()
+            note["resolved_by"] = "teknik-ofis-muduru"
+            note["resolution"] = "approved_plate_specs holes koordinati guncellenerek yeniden uretildi"
+            resolved += 1
+        rewritten.append(json.dumps(note, ensure_ascii=False))
+    path.write_text("\n".join(rewritten) + ("\n" if rewritten else ""), encoding="utf-8")
+    return resolved
+
+
 def _read_open_manager_issue_notes(output_dir: Any) -> list[dict[str, Any]]:
     path = output_dir / "manager_issue_notes.jsonl"
     if not path.exists():
@@ -3756,7 +3805,7 @@ def _resolve_open_manager_notes_matching(
 
 
 def _affected_pozs_from_notes(notes: list[dict[str, Any]], *, allowed_pozs: set[str] | None = None) -> list[str]:
-    geometry_tags = {"pah/kose eksigi", "poligon kontur", "gorsel analiz notu"}
+    geometry_tags = {"pah/kose eksigi", "poligon kontur", "gorsel analiz notu", "delik koordinati"}
     pozs: list[str] = []
     for note in notes:
         tags = {str(tag) for tag in note.get("tags", []) if str(tag).strip()} if isinstance(note.get("tags"), list) else set()
@@ -3891,6 +3940,11 @@ def _extract_missing_pdf_candidates(paths: RuntimePaths, bridge: Any, job_id: st
             "source_pdf": item["source_pdf"],
             "source_page": item["source_page"],
             "image": _relative_to_suite(paths, item["image"]),
+            "microzoom_manifest_path": _relative_to_suite(paths, item["microzoom_manifest_path"]) if item.get("microzoom_manifest_path") else None,
+            "evidence_images": [
+                _relative_to_suite(paths, Path(image_path))
+                for image_path in item.get("evidence_images", [])
+            ],
         }
         for item in rendered
     ]
@@ -3906,8 +3960,15 @@ def _extract_missing_pdf_candidates(paths: RuntimePaths, bridge: Any, job_id: st
             "report_path": _relative_to_suite(paths, report_path),
         }
 
+    # Diagnostic hints: total_vector_circles per PDF → Codex'in delikleri kaçırmaması için
+    diagnostic_hints: dict[str, int] = {}
+    for pdf_diag in (diagnostics.get("pdfs") or []):
+        circles = int(pdf_diag.get("total_vector_circles") or 0)
+        if circles:
+            diagnostic_hints[str(pdf_diag.get("source_pdf", ""))] = circles
+
     schema_path = _visual_candidate_schema_path(paths)
-    prompt = _missing_candidate_prompt(paths, job_id, rendered, existing_candidates)
+    prompt = _missing_candidate_prompt(paths, job_id, rendered, existing_candidates, diagnostic_hints=diagnostic_hints or None)
     result = bridge.run(
         CodexRunRequest(
             prompt=prompt,
@@ -3956,8 +4017,16 @@ def _extract_missing_pdf_candidates(paths: RuntimePaths, bridge: Any, job_id: st
         raw_candidates = []
     allowed_pdf_names = [str(info["source_pdf"]) for info in pdf_infos]
     allowed_pages = {(str(item["source_pdf"]), int(item["source_page"])) for item in missing_requests}
+    rendered_evidence = _evidence_by_page(rendered)
     new_candidates = [
-        _normalize_visual_candidate(item, index, provider="manager_pdf_scan", allowed_pdf_names=allowed_pdf_names)
+        _normalize_visual_candidate(
+            item,
+            index,
+            provider="manager_pdf_scan",
+            allowed_pdf_names=allowed_pdf_names,
+            evidence_by_page=rendered_evidence,
+            paths=paths,
+        )
         for index, item in enumerate(raw_candidates, start=1)
         if isinstance(item, dict)
     ]
@@ -3982,6 +4051,28 @@ def _extract_missing_pdf_candidates(paths: RuntimePaths, bridge: Any, job_id: st
         appended.append(candidate)
         existing_keys.add(key)
 
+    # Cross-check: expected holes (from vector circles) vs extracted holes
+    if diagnostic_hints:
+        for _hint_pdf, _expected_circles in diagnostic_hints.items():
+            _extracted_holes = sum(
+                len(c.get("holes") or [])
+                for c in new_candidates
+                if str(c.get("source_pdf", "")) == _hint_pdf
+            )
+            if _expected_circles > 0 and _extracted_holes == 0:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "job=%s pdf=%s expected_holes=%d extracted=0 — delik kacirimi olmasi muhtemel",
+                    job_id, _hint_pdf, _expected_circles,
+                )
+
+    merged = annotate_candidate_qualities(
+        [item for item in merged if isinstance(item, dict)],
+        paths,
+        job_id,
+        extraction_status="extracted",
+        refinement_attempted=False,
+    )
     codex_out = {
         "schema_version": codex_data.get("schema_version", 1) if isinstance(codex_data, dict) else 1,
         "job_id": job_id,
@@ -4097,9 +4188,13 @@ def _render_pdf_page_requests(paths: RuntimePaths, job_id: str, requests: list[d
             "Split the PDF or narrow the page range before visual extraction."
         )
     run_id = f"{job_id}-missing-{uuid.uuid4().hex[:8]}"
-    pages_dir = paths.suite_root / ".state" / "codex-runs" / run_id / "pages"
+    run_dir = paths.suite_root / ".state" / "codex-runs" / run_id
+    pages_dir = run_dir / "pages"
+    microzoom_dir = run_dir / "microzoom"
     pages_dir.mkdir(parents=True, exist_ok=True)
     rendered: list[dict[str, Any]] = []
+    full_page_images: list[dict[str, Any]] = []
+    evidence_images: list[dict[str, Any]] = []
     grouped: dict[str, list[int]] = {}
     for request in requests:
         source_pdf = str(request.get("source_pdf") or "")
@@ -4120,11 +4215,45 @@ def _render_pdf_page_requests(paths: RuntimePaths, job_id: str, requests: list[d
                 pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
                 target = pages_dir / f"{pdf_path.stem}-p{page_number}.png"
                 pix.save(target)
-                rendered.append({"source_pdf": source_pdf, "source_page": page_number, "image": target})
+                full_page_images.append(
+                    {
+                        "source_pdf": source_pdf,
+                        "source_page": page_number,
+                        "role": "full_page",
+                        "path": str(target),
+                        "width_px": int(getattr(pix, "width", 0) or 0),
+                        "height_px": int(getattr(pix, "height", 0) or 0),
+                    }
+                )
+                page_evidence = render_microzoom_images(
+                    page,
+                    fitz,
+                    microzoom_dir,
+                    source_pdf=source_pdf,
+                    source_page=page_number,
+                )
+                evidence_images.extend(page_evidence)
+                rendered.append(
+                    {
+                        "source_pdf": source_pdf,
+                        "source_page": page_number,
+                        "image": target,
+                        "evidence_images": [item["path"] for item in page_evidence],
+                    }
+                )
         finally:
             close = getattr(doc, "close", None)
             if callable(close):
                 close()
+    if rendered:
+        manifest_path = write_microzoom_manifest(
+            run_dir,
+            job_id=job_id,
+            full_page_images=full_page_images,
+            evidence_images=evidence_images,
+        )
+        for item in rendered:
+            item["microzoom_manifest_path"] = manifest_path
     return rendered
 
 
@@ -4134,6 +4263,8 @@ def _load_autocad_uzman_skill_context(paths: RuntimePaths) -> str:
     parts: list[str] = []
     for rel in (
         "autocad-uzman-1/AGENT.md",
+        "_shared/skills/GORSEL_ANALIZ_PROTOKOLU.md",
+        "_shared/skills/MIKRO_ZOOM_PROTOKOLU.md",
         "_shared/skills/PDF_POZ_OKUMA.md",
         "_shared/skills/PLAKA_GEOMETRI_CIKARMA.md",
     ):
@@ -4143,7 +4274,13 @@ def _load_autocad_uzman_skill_context(paths: RuntimePaths) -> str:
     return "\n\n".join(parts)
 
 
-def _missing_candidate_prompt(paths: RuntimePaths, job_id: str, rendered: list[dict[str, Any]], existing_candidates: list[Any]) -> str:
+def _missing_candidate_prompt(
+    paths: RuntimePaths,
+    job_id: str,
+    rendered: list[dict[str, Any]],
+    existing_candidates: list[Any],
+    diagnostic_hints: dict[str, int] | None = None,
+) -> str:
     skill_context = _load_autocad_uzman_skill_context(paths)
     page_lines = [
         f"- image {index}: {item['source_pdf']} page {item['source_page']}"
@@ -4155,15 +4292,32 @@ def _missing_candidate_prompt(paths: RuntimePaths, job_id: str, rendered: list[d
         if isinstance(item, dict) and item.get("poz_no")
     ]
     context_header = f"{skill_context}\n\n---\n" if skill_context.strip() else ""
+    hint_block = ""
+    if diagnostic_hints:
+        hint_lines = [
+            f"- {pdf}: {count} vektor daire tespit edildi → holes[] en az {count} delik icermeli."
+            for pdf, count in diagnostic_hints.items()
+        ]
+        hint_block = (
+            "Diagnostik ipuclari (PDF basi beklenen delik sayisi):\n"
+            + "\n".join(hint_lines)
+            + "\nEger goruntuyde daireler varsa holes[] bos birakilmamali; koordinat belirsizse dusuk confidence + uncertainties yaz.\n"
+        )
     return (
         f"{context_header}"
         "Bu teknik ofis PDF renderlerinden eksik plaka adaylarini oku. Yalnizca JSON dondur.\n"
+        "Shell komutu calistirma, dosya arama yapma, ek dosya okuma denemesi yapma; yalnizca attached render ve mikro-zoom kanitlarini kullan.\n"
         "Bu is, daha once okunmamis sayfalari tamamlamak icindir; gorulmeyen olcu veya poz uydurma.\n"
         "Her image icin karsilik gelen PDF sayfasi:\n"
         + "\n".join(page_lines)
         + "\n"
-        "JSON schema: {\"candidates\":[{\"source_pdf\":\"...pdf\",\"source_page\":1,\"poz_no\":\"1001\",\"width\":200,\"height\":100,\"thickness\":10,\"material\":\"S355\",\"quantity\":1,\"holes\":[{\"x\":50,\"y\":25,\"diameter\":18}],\"slots\":[],\"corner_reliefs\":[],\"contour_type\":\"rectangle|polygon|chamfered\",\"confidence\":0.45,\"evidence\":\"kisa kanit\"}]}\n"
+        + hint_block
+        + "JSON schema: {\"candidates\":[{\"source_pdf\":\"...pdf\",\"source_page\":1,\"poz_no\":\"1001\",\"width\":200,\"height\":100,\"thickness\":10,\"material\":\"S355\",\"quantity\":1,\"holes\":[{\"x\":50,\"y\":25,\"diameter\":18}],\"slots\":[],\"corner_reliefs\":[{\"corner\":\"bottom_left\",\"radius\":10,\"relief_type\":\"chamfer\",\"x_offset\":10,\"y_offset\":10}],\"polygon_vertices\":null,\"contour_type\":\"rectangle|polygon|chamfered\",\"confidence\":0.45,\"analysis_confidence\":0.45,\"uncertainties\":[],\"source_trace\":{\"source_pdf\":\"...pdf\",\"source_page\":1,\"method\":\"manager_pdf_scan\",\"microzoom_manifest_path\":null,\"evidence_images\":[]},\"microzoom_manifest_path\":null,\"evidence_images\":[],\"evidence\":\"kisa kanit\"}]}\n"
         "Poz numarasi sayfa numarasi degildir. Cizimdeki parca/mark bilgisini poz_no olarak kullan.\n"
+        "Her aday icin mikro-zoom manifestine dayali source_trace, evidence_images, analysis_confidence ve uncertainties yaz.\n"
+        "Plaka dis konturu dikdortgen degilse contour_type='polygon' yaz ve polygon_vertices icine tum kose koordinatlarini CCW siraya (0,0)=sol alt referansiyla mm cinsinden gir; net okunamazsa null birak.\n"
+        "`contour_type='polygon'` olan aday uretilebilir sayilmak icin `polygon_vertices` zorunludur; belirsiz vertex listesini tahmin ederek doldurma.\n"
+        "Polygon kontur + pah/chamfer kombinasyonu gecerlidir: polygon_vertices ile dis konturu, corner_reliefs ile kose pahlarini ayni anda belirt.\n"
         "Plaka dis konturu dikdortgen degilse `contour_type` ile belirt. Pah/chamfer veya kose bosaltma varsa `corner_reliefs` doldur; bos birakma.\n"
         "Delik, slot, kalinlik, malzeme, adet ve ana olculer net degilse dusuk confidence ve acik evidence yaz; tamamen belirsizse aday verme.\n"
         f"Zaten mevcut pozlar: {', '.join(existing_pozs) if existing_pozs else 'yok'}.\n"
@@ -4172,7 +4326,7 @@ def _missing_candidate_prompt(paths: RuntimePaths, job_id: str, rendered: list[d
 
 
 def _visual_candidate_schema_path(paths: RuntimePaths) -> Path:
-    path = paths.suite_root / ".state" / "codex-runs" / "manager-missing-candidates.v1.schema.json"
+    path = paths.suite_root / ".state" / "codex-runs" / "manager-missing-candidates.v3.schema.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(_visual_candidate_output_schema(), indent=2), encoding="utf-8")
     return path
@@ -4202,8 +4356,32 @@ def _visual_candidate_output_schema() -> dict[str, Any]:
     }
     relief_schema = {
         "type": "object",
-        "properties": {"corner": {"type": "string"}, "radius": {"type": "number"}, "relief_type": {"type": "string"}},
-        "required": ["corner", "radius", "relief_type"],
+        "properties": {
+            "corner": {"type": "string"},
+            "radius": {"type": "number"},
+            "relief_type": {"type": "string"},
+            "x_offset": number_or_null,
+            "y_offset": number_or_null,
+        },
+        "required": ["corner", "radius", "relief_type", "x_offset", "y_offset"],
+        "additionalProperties": False,
+    }
+    polygon_vertex_schema = {
+        "type": "object",
+        "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
+        "required": ["x", "y"],
+        "additionalProperties": False,
+    }
+    source_trace_schema = {
+        "type": "object",
+        "properties": {
+            "source_pdf": {"type": "string"},
+            "source_page": integer_or_null,
+            "method": string_or_null,
+            "microzoom_manifest_path": string_or_null,
+            "evidence_images": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["source_pdf", "source_page", "method", "microzoom_manifest_path", "evidence_images"],
         "additionalProperties": False,
     }
     candidate_schema = {
@@ -4220,8 +4398,14 @@ def _visual_candidate_output_schema() -> dict[str, Any]:
             "holes": {"type": "array", "items": hole_schema},
             "slots": {"type": "array", "items": slot_schema},
             "corner_reliefs": {"type": "array", "items": relief_schema},
+            "polygon_vertices": {"type": ["array", "null"], "items": polygon_vertex_schema},
             "contour_type": string_or_null,
             "confidence": {"type": "number"},
+            "analysis_confidence": {"type": "number"},
+            "uncertainties": {"type": "array", "items": {"type": "string"}},
+            "source_trace": source_trace_schema,
+            "microzoom_manifest_path": string_or_null,
+            "evidence_images": {"type": "array", "items": {"type": "string"}},
             "evidence": string_or_null,
         },
         "required": [
@@ -4236,8 +4420,14 @@ def _visual_candidate_output_schema() -> dict[str, Any]:
             "holes",
             "slots",
             "corner_reliefs",
+            "polygon_vertices",
             "contour_type",
             "confidence",
+            "analysis_confidence",
+            "uncertainties",
+            "source_trace",
+            "microzoom_manifest_path",
+            "evidence_images",
             "evidence",
         ],
         "additionalProperties": False,
@@ -4250,15 +4440,51 @@ def _visual_candidate_output_schema() -> dict[str, Any]:
     }
 
 
-def _normalize_visual_candidate(item: dict[str, Any], index: int, *, provider: str, allowed_pdf_names: list[str]) -> dict[str, Any]:
+def _normalize_visual_candidate(
+    item: dict[str, Any],
+    index: int,
+    *,
+    provider: str,
+    allowed_pdf_names: list[str],
+    evidence_by_page: dict[tuple[str, int], dict[str, Any]] | None = None,
+    paths: RuntimePaths | None = None,
+) -> dict[str, Any]:
     source_pdf = str(item.get("source_pdf") or "").strip()
     if source_pdf not in set(allowed_pdf_names) and len(allowed_pdf_names) == 1:
         source_pdf = allowed_pdf_names[0]
+    source_page = item.get("source_page")
+    try:
+        source_page_key = int(source_page or 0)
+    except (TypeError, ValueError):
+        source_page_key = 0
+    evidence_info = (evidence_by_page or {}).get((source_pdf, source_page_key), {})
+    generated_images = evidence_info.get("evidence_images") if isinstance(evidence_info.get("evidence_images"), list) else []
+    # Runtime-rendered evidence is authoritative. Model-provided image paths can
+    # be stale or hallucinated, so only use them when no manifest evidence exists.
+    raw_evidence_images = generated_images or (item.get("evidence_images") if isinstance(item.get("evidence_images"), list) else [])
+    manifest_path = item.get("microzoom_manifest_path") or evidence_info.get("microzoom_manifest_path")
+    evidence_images = [
+        _relative_to_suite(paths, Path(image_path)) if paths is not None else str(image_path)
+        for image_path in raw_evidence_images
+        if image_path
+    ]
+    manifest_text = _relative_to_suite(paths, Path(manifest_path)) if paths is not None and manifest_path else (str(manifest_path) if manifest_path else None)
+    source_trace = {
+        "source_pdf": source_pdf or str(item.get("source_pdf") or ""),
+        "source_page": source_page,
+        "method": provider,
+        "microzoom_manifest_path": manifest_text,
+        "evidence_images": evidence_images,
+    }
+    if isinstance(item.get("source_trace"), dict):
+        incoming_trace = item["source_trace"]
+        if incoming_trace.get("method") not in (None, ""):
+            source_trace["method"] = provider
     return {
         "candidate_id": str(item.get("candidate_id") or f"{provider}-{index}"),
         "provider": provider,
         "source_pdf": source_pdf or item.get("source_pdf"),
-        "source_page": item.get("source_page"),
+        "source_page": source_page,
         "poz_no": item.get("poz_no"),
         "width": item.get("width"),
         "height": item.get("height"),
@@ -4268,12 +4494,32 @@ def _normalize_visual_candidate(item: dict[str, Any], index: int, *, provider: s
         "holes": item.get("holes") if isinstance(item.get("holes"), list) else [],
         "slots": item.get("slots") if isinstance(item.get("slots"), list) else [],
         "corner_reliefs": item.get("corner_reliefs") if isinstance(item.get("corner_reliefs"), list) else [],
+        "polygon_vertices": item.get("polygon_vertices") if isinstance(item.get("polygon_vertices"), list) else None,
         "contour_type": item.get("contour_type"),
         "confidence": item.get("confidence") or 0.0,
+        "analysis_confidence": item.get("analysis_confidence") or item.get("confidence") or 0.0,
+        "uncertainties": item.get("uncertainties") if isinstance(item.get("uncertainties"), list) else [],
+        "source_trace": source_trace,
+        "microzoom_manifest_path": manifest_text,
+        "evidence_images": evidence_images,
         "evidence": item.get("evidence") or item.get("reason"),
         "approval_required": True,
         "validation_errors": [],
     }
+
+
+def _evidence_by_page(rendered: list[dict[str, Any]]) -> dict[tuple[str, int], dict[str, Any]]:
+    indexed: dict[tuple[str, int], dict[str, Any]] = {}
+    for item in rendered:
+        try:
+            key = (str(item.get("source_pdf") or ""), int(item.get("source_page") or 0))
+        except (TypeError, ValueError):
+            continue
+        indexed[key] = {
+            "microzoom_manifest_path": str(item.get("microzoom_manifest_path")) if item.get("microzoom_manifest_path") else None,
+            "evidence_images": [str(path) for path in item.get("evidence_images", []) if path],
+        }
+    return indexed
 
 
 def _candidate_identity(candidate: dict[str, Any], *, single_pdf_name: str | None = None) -> tuple[str, int, str]:
@@ -4300,7 +4546,8 @@ def _pdf_page_count(path: Path) -> int | None:
             return len(doc)
         finally:
             doc.close()
-    except Exception:
+    except Exception as exc:
+        log.debug("pdf_page_count_failed", path=str(path), error=str(exc))
         return None
 
 
@@ -4314,7 +4561,8 @@ def _safe_pdf_name_local(value: str) -> str:
 def _relative_to_suite(paths: RuntimePaths, path: Path) -> str:
     try:
         return str(path.resolve().relative_to(paths.suite_root.resolve())).replace("\\", "/")
-    except Exception:
+    except Exception as exc:
+        log.debug("relative_to_suite_failed", path=str(path), error=str(exc))
         return str(path)
 
 
@@ -4455,6 +4703,8 @@ def _looks_like_project_edit_request(text: str) -> bool:
     lower = _normalize_turkish(visible_text)
     if not lower:
         return False
+    if _looks_like_job_artifact_geometry_issue(text):
+        return False
     edit_words = (
         "duzelt",
         "guncelle",
@@ -4519,6 +4769,28 @@ def _looks_like_project_edit_request(text: str) -> bool:
     return any(target in lower for target in project_targets)
 
 
+def _looks_like_job_artifact_geometry_issue(text: str) -> bool:
+    visible_text = _visible_user_text(text)
+    lower = _normalize_turkish(visible_text)
+    has_job_or_poz = bool(
+        _selected_job_id_from_context(text)
+        or _job_id_from_memory_context(text)
+        or _extract_job_id(visible_text)
+        or _extract_poz_no_from_text(visible_text)
+        or ("poz" in lower and _extract_numeric_reference(visible_text))
+    )
+    if not has_job_or_poz:
+        return False
+    artifact_terms = ("dxf", "nc1", "qc", "cizim", "uretilen", "olusturulan")
+    geometry_terms = ("delik", "hole", "pah", "kose", "poligon", "kontur", "koordinat", "konum")
+    issue_terms = ("hatali", "yanlis", "olmasi gereken", "olmali", "duzelt", "tespit", "hata")
+    return (
+        any(term in lower for term in artifact_terms)
+        and any(term in lower for term in geometry_terms)
+        and any(term in lower for term in issue_terms)
+    )
+
+
 def _format_project_edit_unavailable_response(reason: str) -> str:
     return (
         "Bu istek proje/kod duzeltmesi gerektiriyor; bunun icin mudurun Codex CLI'yi proje yazma modunda calistirmasi gerekiyor. "
@@ -4527,201 +4799,6 @@ def _format_project_edit_unavailable_response(reason: str) -> str:
     )
 
 
-def _extract_numeric_reference(text: str) -> str | None:
-    match = re.search(r"\b[0-9]{2,}\b", text)
-    return match.group(0) if match else None
-
-
-def _extract_poz_no(text: str) -> str | None:
-    match = re.search(r"\b[0-9]{3,6}\b", text)
-    return match.group(0) if match else None
-
-
-def _looks_like_job_reference(lower: str) -> bool:
-    return any(word in lower for word in ("job", "is", "id", "numara"))
-
-
-def _looks_like_selected_job_reference(lower: str) -> bool:
-    return _looks_like_job_reference(lower) or any(phrase in lower for phrase in ("bu isin", "bu isi", "bu ise", "secili is", "secilen is", "pdf"))
-
-
-def _looks_like_list_jobs_request(lower: str) -> bool:
-    return any(
-        phrase in lower
-        for phrase in (
-            "isleri listele",
-            "joblari listele",
-            "hangi isler",
-            "mevcut isler",
-            "hangi isimiz",
-            "hangi is var",
-            "aktif is",
-            "is listesi",
-            "is listele",
-            "joblar neler",
-            "hangi pdf",
-            "hangi dosya",
-            "ne isimiz var",
-        )
-    )
-
-
-def _looks_like_create_job_request(lower: str) -> bool:
-    return any(
-        phrase in lower
-        for phrase in (
-            "yeni is",
-            "yeni job",
-            "is baslat",
-            "imports",
-            "klasor olustur",
-            "is ac",
-            "is ekle",
-            "job olustur",
-            "job ac",
-        )
-    )
-
-
-def _extract_project_name(text: str) -> str | None:
-    match = re.search(r"(?:proje|project|isim|adi|named?)[:\s]+([^\n,;]+)", text, re.IGNORECASE)
-    return match.group(1).strip() if match else None
-
-
-def _looks_like_run_request(lower: str) -> bool:
-    if "run job" in lower or "pipeline calistir" in lower:
-        return True
-    if any(phrase in lower for phrase in ("calistir", "isle", "uretime al", "uretimi baslat", "yeniden uret")):
-        return True
-    return re.search(r"\buret\b", lower) is not None
-
-
-def _looks_like_issue_discussion_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if _looks_like_run_request(lower) or _looks_like_list_jobs_request(lower) or _looks_like_create_job_request(lower):
-        return False
-    issue_words = (
-        "hata",
-        "yanlis",
-        "duzelt",
-        "duzeltebilir",
-        "sorun",
-        "sikinti",
-        "tespit",
-        "eksik",
-        "sayfa",
-        "pdf icerisinde",
-        "toplam",
-        "uretti",
-        "uretildi",
-        "neden",
-        "cevap vermedin",
-        "yapilmadi",
-        "olmadi",
-        "pah",
-        "poligon",
-        "kose",
-        "cizim",
-        "gorsel analiz",
-        "gorselanaliz",
-        "ilet",
-        "aktar",
-    )
-    return any(word in lower for word in issue_words)
-
-
-def _looks_like_job_learning_request(text: str) -> bool:
-    visible_text = _visible_user_text(text)
-    lower = _normalize_turkish(visible_text)
-    if not any(word in lower for word in ("ogrendi", "ogrenim", "retrospektif", "retrospective", "ders", "lesson")):
-        return False
-    return any(word in lower for word in ("agent", "ajan", "sistem", "proje", "is", "job", "bu projede"))
-
-
-def _looks_like_agent_creation_request(lower: str) -> bool:
-    return "ajan" in lower and any(
-        word in lower
-        for word in (
-            "taslak",
-            "olustur",
-            "kur",
-            "hazirla",
-            "ekle",
-            "yarat",
-            "yeni",
-        )
-    )
-
-
-def _policy_from_text(lower: str) -> str:
-    return "auto_start_if_needed" if any(word in lower for word in ("live acik", "autocad on")) else "off"
-
-
-def _normalize_turkish(text: str) -> str:
-    return normalize_search_text(text)
-
-
-def _visible_user_text(text: str) -> str:
-    cut = len(text)
-    for marker in (f"\n\n{_SELECTED_CONTEXT_MARKER}", f"\n\n{_MEMORY_CONTEXT_MARKER}"):
-        idx = text.find(marker)
-        if idx >= 0:
-            cut = min(cut, idx)
-    return repair_text(text[:cut].strip())
-
-
-def _repair_mojibake_text(text: str) -> str:
-    if not text or not any(marker in text for marker in ("Ã", "Ä", "Å")):
-        return text
-    try:
-        repaired = text.encode("latin-1").decode("utf-8")
-    except UnicodeError:
-        return text
-    return repaired if sum(repaired.count(marker) for marker in ("Ã", "Ä", "Å")) < sum(text.count(marker) for marker in ("Ã", "Ä", "Å")) else text
-
-
-def _selected_job_id_from_context(text: str) -> str | None:
-    raw = _hidden_context_payload(text, _SELECTED_CONTEXT_MARKER)
-    if raw is None:
-        return None
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    job_id = parsed.get("selected_job_id") if isinstance(parsed, dict) else None
-    return str(job_id) if job_id else None
-
-
-def _job_id_from_memory_context(text: str) -> str | None:
-    raw = _hidden_context_payload(text, _MEMORY_CONTEXT_MARKER)
-    if raw is None:
-        return None
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    primary = parsed.get("primary_job_id")
-    if isinstance(primary, str) and primary.strip():
-        return primary.strip()
-    for key in ("facts", "recent_events"):
-        items = parsed.get(key)
-        if not isinstance(items, list):
-            continue
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            job_id = item.get("job_id")
-            if isinstance(job_id, str) and job_id.strip():
-                return job_id.strip()
-            job_ids = item.get("job_ids")
-            if isinstance(job_ids, list):
-                for value in job_ids:
-                    if isinstance(value, str) and value.strip():
-                        return value.strip()
-    return None
 
 
 def _manager_memory_context_block(text: str) -> str:
@@ -4772,48 +4849,10 @@ def _manager_memory_context_block(text: str) -> str:
                 count = p.get("pattern_count") or 0
                 conf = p.get("confidence") or 0.0
                 lines.append(f"- {job}: {count} poz, guven={conf:.2f}")
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("manager_memory_patterns_failed", error=str(exc))
     return "\n".join(lines) if lines else "(ilgili kalici hafiza kaydi yok)"
 
-
-def _hidden_context_payload(text: str, marker: str) -> str | None:
-    idx = text.find(marker)
-    if idx < 0:
-        return None
-    start = idx + len(marker)
-    end = text.find("\n\n[", start)
-    raw = text[start:end if end >= 0 else len(text)].strip()
-    if raw.endswith("]"):
-        raw = raw[:-1].strip()
-    return raw or None
-
-
-def _short_text(value: str, limit: int) -> str:
-    compact = re.sub(r"\s+", " ", value).strip()
-    if len(compact) <= limit:
-        return compact
-    return compact[: max(0, limit - 3)].rstrip() + "..."
-
-
-def _job_id_from_recent_history(history: list[dict[str, str]]) -> str | None:
-    for item in reversed(history[-12:]):
-        if item.get("role") != "user":
-            continue
-        content = item.get("content")
-        if not isinstance(content, str):
-            continue
-        matches = re.findall(r"\b[A-Za-z]+-[0-9][A-Za-z0-9_.-]*\b", _visible_user_text(content))
-        if matches:
-            return matches[-1]
-    for item in reversed(history[-12:]):
-        content = item.get("content")
-        if not isinstance(content, str):
-            continue
-        match = re.search(r"`([A-Za-z]+-[0-9][A-Za-z0-9_.-]*)`\s+(?:durum ozeti|icin)", content)
-        if match:
-            return match.group(1)
-    return None
 
 
 def _format_issue_discussion_response(paths: RuntimePaths, text: str) -> str:
@@ -4963,18 +5002,53 @@ def _format_job_learning_summary(paths: RuntimePaths, job_id: str) -> str:
     return "\n".join(lines)
 
 
-def _read_json_file(path: Any) -> Any:
+def _format_backfill_result_response(job_id: str, result: dict[str, Any]) -> str:
+    lines = [f"`{job_id}` icin ogrenim dongusu tamamlandi:\n"]
+    retro = result.get("retrospective") if isinstance(result.get("retrospective"), dict) else {}
+    if retro.get("path"):
+        lines.append(f"- retrospective.json yazildi: `{retro['path']}`")
+    sp = retro.get("skill_proposal_path")
+    if sp:
+        lines.append(f"- Skill proposal olusturuldu: `{sp}`")
+    mb = result.get("memory_bridge") if isinstance(result.get("memory_bridge"), dict) else {}
+    if mb.get("ok"):
+        lines.append(
+            f"- Memory bridge guncellendi: {mb.get('plate_count', 0)} plaka, "
+            f"parmak izi `{str(mb.get('fingerprint', ''))[:12]}`"
+        )
+    vault = result.get("vault_path")
+    if vault:
+        lines.append(f"- Manager vault'a eklendi: `{vault}`")
+    if not any((retro.get("path"), sp, mb.get("ok"), vault)):
+        lines.append(f"Backfill tamamlandi ama yazilan dosya raporu alinamadi. Durum: {result.get('status', 'unknown')}")
+    return "\n".join(lines)
+
+
+def _format_manual_note_written_response(job_id: str, note_path: Any, paths: RuntimePaths) -> str:
     try:
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
+        rel = Path(note_path).relative_to(paths.suite_root)
     except Exception:
-        return None
-    return None
+        rel = Path(note_path)
+    return (
+        f"`{job_id}` henuz tamamlanmadigi icin backfill eligibility yok.\n"
+        f"Bildirilen hatalar manuel ogrenim notu olarak kaydedildi:\n"
+        f"- `{rel}`\n\n"
+        "Is tamamlandiginda veya backfill calistirildiginda bu notlar "
+        "retrospektif ile birlestirilecek."
+    )
+
+
+def _read_json_file(path: Any) -> Any:
+    return read_json(Path(path))
 
 
 def _issue_tags(text: str) -> list[str]:
     lower = _normalize_turkish(text)
     tags: list[str] = []
+    if any(word in lower for word in ("hata", "yanlis", "sorun", "sikinti", "tespit", "tamamlanmadi")):
+        tags.append("hata bildirimi")
+    if "delik" in lower or "hole" in lower:
+        tags.append("delik koordinati")
     if "pah" in lower or "kose" in lower:
         tags.append("pah/kose eksigi")
     if "poligon" in lower:
@@ -5022,7 +5096,8 @@ def _append_manager_issue_note(paths: RuntimePaths, job_id: str, message: str, *
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
         return str(path.relative_to(paths.suite_root)).replace("\\", "/")
-    except Exception:
+    except Exception as exc:
+        log.warning("manager_issue_note_append_failed", job_id=job_id, error=str(exc))
         return None
 
 
